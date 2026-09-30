@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src data: https:; style-src 'self'; script-src 'self'" />
+  <title>Notch Island</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="island" class="island" data-state="compact" data-style="pill" tabindex="-1">
+    <!-- compact row ------------------------------------------------------ -->
+    <!-- compact row: two arms that flank the camera housing -------------- -->
+    <div class="compact" id="compact">
+      <div class="arm left" id="armLeft"></div>
+      <div class="notch-gap" id="notchGap"></div>
+      <div class="arm right" id="armRight"></div>
+    </div>
+
+    <!-- panels ------------------------------------------------------------ -->
+    <div class="panels" id="panels">
+
+      <section class="panel" data-panel="player">
+        <div class="player">
+          <div class="artwork" id="artwork">
+            <div class="artwork-fallback" id="artworkFallback"></div>
+            <img id="artworkImage" alt="" />
+            <div class="artwork-bars" id="artworkBars"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="player-meta">
+            <div class="player-title" id="playerTitle">Nothing playing</div>
+            <div class="player-sub" id="playerSub">Press play with F8</div>
+            <button class="player-hint" id="playerHint" hidden>
+              <span>Nothing is playing, open</span>
+              <span class="app-name">Music</span>
+            </button>
+            <div class="progress" id="progress" role="slider" aria-label="Playback position">
+              <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+              <div class="progress-times"><span id="elapsed">0:00</span><span id="duration">0:00</span></div>
+            </div>
+          </div>
+          <div class="transport">
+            <button class="transport-button" data-action="media.previous" id="buttonPrevious"></button>
+            <button class="transport-button primary" data-action="media.playPause" id="buttonPlay"></button>
+            <button class="transport-button" data-action="media.next" id="buttonNext"></button>
+          </div>
+        </div>
+        <div class="panel-footer">
+          <button class="chip" data-panel-open="volume" id="outputChip"></button>
+          <div class="spacer"></div>
+          <span class="hint" id="transportHint">F8 play/pause · F9 next</span>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="volume">
+        <div class="panel-head">
+          <h2>Sound</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+        <div class="volume-row">
+          <span class="volume-icon" id="volumeIconLow"></span>
+          <div class="slider" id="volumeSlider" role="slider" aria-label="Output volume">
+            <div class="slider-track"><div class="slider-fill" id="volumeFill"></div></div>
+          </div>
+          <span class="volume-value" id="volumeValue">0%</span>
+          <button class="icon-button" data-action="volume.mute" id="volumeMute"></button>
+        </div>
+        <div class="section-title">Output</div>
+        <div class="device-list" id="outputList"></div>
+      </section>
+
+      <section class="panel" data-panel="mic">
+        <div class="panel-head">
+          <h2>Microphone</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+        <div class="status-banner" id="micBanner"></div>
+        <div class="volume-row">
+          <span class="volume-icon" id="micIcon"></span>
+          <div class="slider" id="micSlider" role="slider" aria-label="Input volume">
+            <div class="slider-track"><div class="slider-fill" id="micFill"></div></div>
+          </div>
+          <span class="volume-value" id="micValue">0%</span>
+          <button class="icon-button" data-action="input.mute" id="micMute"></button>
+        </div>
+        <div class="section-title">Input</div>
+        <div class="device-list" id="inputList"></div>
+      </section>
+
+      <section class="panel" data-panel="bluetooth">
+        <div class="panel-head">
+          <h2>Bluetooth</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+<div class="device-list" id="bluetoothList"></div>
+         <div class="section-title">Accessories</div>
+         <div class="empty" id="bluetoothEmpty">Pair devices in System Settings › Bluetooth.</div>
+       </section>
+
+       <section class="panel" data-panel="battery">
+         <div class="panel-head">
+           <h2>Battery</h2>
+           <button class="icon-button" data-action="close"></button>
+         </div>
+         <div class="charge" id="batteryPanel">
+           <div class="charge-battery">
+             <div class="charge-level" id="batteryPanelLevel"></div>
+             <span class="charge-bolt" id="batteryPanelBolt"></span>
+           </div>
+           <div class="charge-meta">
+             <span class="charge-state" id="batteryPanelState">Charging</span>
+             <span class="charge-percent" id="batteryPanelPercent">0%</span>
+           </div>
+         </div>
+       </section>
+
+         <!-- a live activity, opened on its own when something happens -------- -->
+        <section class="panel" data-panel="activity">
+          <div class="activity" id="activityHead">
+            <div class="activity-icon" id="activityIcon"></div>
+            <div class="activity-meta">
+              <div class="activity-title" id="activityTitle"></div>
+              <div class="activity-sub" id="activitySub"></div>
+            </div>
+            <button class="icon-button" data-action="activity.dismiss" id="activityDismiss"></button>
+          </div>
+          <div class="activity-progress" id="activityProgress"><div id="activityFill"></div></div>
+
+          <!-- charging: a battery that fills left to right, amber into green -->
+          <div class="charge" id="chargeBar" hidden>
+            <div class="charge-battery">
+              <div class="charge-level" id="chargeLevel"></div>
+              <span class="charge-bolt" id="chargeBolt"></span>
+            </div>
+            <div class="charge-meta">
+              <span class="charge-state" id="chargeState">Charging</span>
+              <span class="charge-percent" id="chargePercent">0%</span>
+            </div>
+          </div>
+
+          <!-- AirDrop: the logo, and beneath it a bar the animation plays on -->
+          <div class="xfer" id="transferBar" hidden>
+            <div class="xfer-icon" id="transferIcon"></div>
+            <div class="xfer-track">
+              <div class="xfer-fill"></div>
+              <div class="xfer-front">
+                <span class="xfer-dot from"></span>
+                <span class="xfer-dot to"></span>
+              </div>
+              <span class="xfer-check" id="transferCheck"></span>
+            </div>
+            <div class="xfer-text">
+              <div class="xfer-caption" id="transferCaption"></div>
+              <div class="xfer-sub" id="transferSub"></div>
+            </div>
+          </div>
+
+          <div class="activity-actions" id="activityActions"></div>
+        </section>
+
+      <!-- long press reveals these, the way extra controls slide up --------- -->
+      <section class="panel" data-panel="quick">
+        <div class="quick">
+          <button class="quick-item" data-panel-open="volume" id="quickOutput"></button>
+          <button class="quick-item" data-panel-open="mic" id="quickMic"></button>
+          <button class="quick-item" data-panel-open="bluetooth" id="quickBluetooth"></button>
+          <button class="quick-item" data-panel-open="player" id="quickPlayer"></button>
+        </div>
+        <div class="quick">
+          <button class="quick-item" data-panel-open="clipboard" id="quickClipboard"></button>
+          <button class="quick-item" data-panel-open="settings" id="quickSettings"></button>
+          <button class="quick-item" id="quickTimer"></button>
+        </div>
+        <div class="section-title">Timers</div>
+        <div class="quick-timers" id="quickTimers"></div>
+        <div class="quick-active" id="quickActive"></div>
+      </section>
+
+      <section class="panel" data-panel="clipboard">
+        <div class="panel-head">
+          <h2>Clipboard</h2>
+          <button class="text-button" data-action="clipboard.clear">Clear</button>
+        </div>
+        <div class="clipboard-list" id="clipboardList"></div>
+      </section>
+
+      <!-- the clock the row's time widget opens: the time, big, with seconds -->
+      <section class="panel" data-panel="clock">
+        <div class="panel-head">
+          <h2>Clock</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+        <div class="clock-face">
+          <div class="clock-time"><span id="clockTime">--:--</span><span class="clock-seconds" id="clockSeconds">--</span></div>
+          <div class="clock-date" id="clockDate"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="settings">
+        <div class="panel-head">
+          <h2>Settings</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+        <div class="settings-scroll">
+          <div class="section-title">Appearance</div>
+          <label class="row">
+            <span>Compact shape</span>
+            <select id="styleSelect">
+              <option value="pill">Pill around the notch</option>
+              <option value="notch">Fill the notch exactly</option>
+            </select>
+          </label>
+          <label class="row">
+            <span>Expand on hover</span>
+            <input type="checkbox" id="hoverToggle" class="switch" />
+          </label>
+          <label class="row">
+            <span>Claim the media keys</span>
+            <input type="checkbox" id="mediaKeysToggle" class="switch" />
+          </label>
+          <label class="row">
+            <span>Open at login</span>
+            <input type="checkbox" id="loginToggle" class="switch" />
+          </label>
+
+          <div class="section-title">Widgets</div>
+          <div class="widget-toggles" id="widgetToggles"></div>
+
+          <div class="section-title">Hotkeys</div>
+          <div class="hotkey-list" id="hotkeyList"></div>
+
+          <div class="section-title">System</div>
+          <div class="facts" id="facts"></div>
+          <button class="text-button" id="retryHelper" hidden>Retry system bridge</button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- folds the island back to the pill, the way tapping it does -->
+    <button class="island-collapse" id="islandCollapse" data-action="close"
+            aria-label="Fold the island away"></button>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
