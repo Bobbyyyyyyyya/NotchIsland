@@ -52,9 +52,19 @@ test('an item added in a later version reaches a layout that predates it', () =>
 
 test('unknown ids and duplicates are dropped', () => {
   const clean = layout.normalise({ compact: ['clock', 'clock', 'nonsense', 'cpu'] });
-  // `charging` was added in version 2, so an older layout still gains it: the
-  // charger must not be the thing that silently disappears on upgrade.
-  assert.deepStrictEqual(clean.compact, ['clock', 'cpu', 'charging']);
+  assert.deepStrictEqual(clean.compact, ['clock', 'cpu']);
+});
+
+test('a layout that says nothing about its version has nothing to catch up on', () => {
+  // Reading a missing version as "as old as possible" would put back anything a
+  // version of the app once added, which is the opposite of what an emptied surface
+  // asks for — and every file this app writes carries a version, so the default
+  // only ever applies to something hand-written.
+  assert.deepStrictEqual(layout.normalise({ compact: [] }).compact, []);
+  assert.deepStrictEqual(layout.normalise({ compact: ['media'] }).compact, ['media']);
+  // One that does say: the charger was added in version 2, so a layout from before
+  // it still gains it rather than the indicator quietly disappearing on upgrade.
+  assert.deepStrictEqual(layout.normalise({ compact: ['media'], version: 1 }).compact, ['media', 'charging']);
 });
 
 test('the charger is an item, so it can be taken out', () => {
@@ -197,12 +207,18 @@ test('a size a later version cannot draw is dropped', () => {
 });
 
 test('the charger is an item, so the island can stop saying anything about it', () => {
-  // The main process only keeps the charge activity while the row carries it.
-  assert.ok(activities.derive({ ...base, battery: { level: 0.5, charging: true } }).some((a) => a.kind === 'battery'));
-  const carried = { layout: { arranged: { compact: { right: ['charging'], left: [] } } } };
-  assert.ok(activities.derive({ ...base, ...carried }).some((a) => a.kind === 'battery'));
-  const removed = { layout: { arranged: { compact: { right: [], left: [] } } } };
-  assert.strictEqual(activities.derive({ ...base, ...removed }).some((a) => a.kind === 'battery'), false);
+  // `derive` is handed the main process state, not the snapshot, so the row has to
+  // be read off `state.compact` — which is what put this back in the island when the
+  // gate was reading a key the state never had.
+  const row = (compact) => ({ ...base, compact: layout.arranged({ compact }, 'compact') });
+  assert.ok(activities.derive({ ...base, battery: { level: 0.5, charging: true } }).some((a) => a.kind === 'battery'),
+    'a state with no row yet is not the place the charger disappears');
+  assert.ok(activities.derive(row(['charging'])).some((a) => a.kind === 'battery'), 'carried, it shows');
+  assert.strictEqual(activities.derive(row([])).some((a) => a.kind === 'battery'), false, 'taken out, it does not');
+  assert.strictEqual(activities.derive(row(['media', 'volume'])).some((a) => a.kind === 'battery'), false,
+    'and a row without it is still a row without it');
+  // Whatever else is happening, the charger is the only thing that decides this.
+  assert.ok(activities.derive(row(['charging', 'media'])).some((a) => a.kind === 'battery'));
 });
 
 test('the palette knows what a surface is not carrying', () => {

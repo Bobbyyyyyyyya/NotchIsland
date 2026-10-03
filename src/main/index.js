@@ -55,6 +55,7 @@ const state = {
   system: { cpu: 0, micAccess: 'unknown', displays: 0 },
   helper: { available: false, reason: 'starting', capabilities: {} },
   hotkeys: {},
+  compact: { right: [], left: [] },
   update: { ...updater.status(), current: app.getVersion() },
 };
 
@@ -650,9 +651,18 @@ async function captureReference () {
 
 function applyPreferences () {
   state.hotkeys = hotkeys.apply(prefs.load());
+  // The activities are derived from `state`, not from the snapshot, so the row the
+  // user arranged has to be on the state itself: it is what decides whether the
+  // charger says anything at all.
+  state.compact = compactRow();
   app.setLoginItemSettings({ openAtLogin: prefs.get('launchAtLogin') === true, openAsHidden: true });
   refreshTrayMenu();
   push();
+}
+
+/** What is in the island row, as the activities ask for it. */
+function compactRow () {
+  return layout.arranged(prefs.get('layout'), 'compact');
 }
 
 function handleHotkey (action) {
@@ -1108,9 +1118,12 @@ function snapshot () {
     // module shows up without the renderer knowing anything about it.
     layout: {
       surfaces: layout.SURFACES,
-      arranged: Object.fromEntries(
-        layout.surfaceNames().map((surface) => [surface, layout.arranged(prefs.get('layout'), surface)]),
-      ),
+      arranged: {
+        ...Object.fromEntries(
+          layout.surfaceNames().map((surface) => [surface, layout.arranged(prefs.get('layout'), surface)]),
+        ),
+        compact: state.compact ?? compactRow(),
+      },
       // Resolved, so the renderer never has to know a default: whatever the
       // arrangement says an item is drawn at is what it is told it is drawn at.
       sizes: sizesOf(prefs.get('layout')),

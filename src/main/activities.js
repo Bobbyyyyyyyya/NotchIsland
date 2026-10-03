@@ -309,12 +309,14 @@ if (media.title && media.rate > 0) {
 /**
  * Whether an item is in the island row.
  *
- * An arrangement that has not arrived yet — a snapshot from before the layout
- * existed — counts as everything being in use, so the charger is never the thing
- * that silently disappears.
+ * It reads the row off the main process state, because that is what `derive` is
+ * handed — not the snapshot, which carries the same thing for the renderer. A row
+ * that has not been filled in yet counts as everything being in use, so the
+ * charger is never the thing that silently disappears before the first
+ * preferences are read.
  */
 function arranged (state, id) {
-  const row = state.layout?.arranged?.compact;
+  const row = state.compact;
   if (!row) return true;
   return Array.isArray(row) ? row.includes(id) : [...(row.right ?? []), ...(row.left ?? [])].includes(id);
 }

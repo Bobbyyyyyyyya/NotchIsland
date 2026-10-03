@@ -193,7 +193,12 @@ function upgradeSurface (surface, ids, version) {
 /** Every surface of a profile, cleaned and up to date. */
 function normalise (layout) {
   const source = layout ?? {};
-  const version = Number(source.version ?? 0);
+  // A layout that does not say what version it is has nothing to catch up on.
+  // Reading that as "as old as possible" would quietly put back anything a version
+  // of the app once removed, which is the opposite of what an emptied surface asks
+  // for. Every file this app writes carries a version, so the default only ever
+  // applies to something hand-written.
+  const version = Number(source.version ?? LAYOUT_VERSION);
   const out = { version: LAYOUT_VERSION, sides: {}, sizes: {} };
   for (const surface of surfaceNames()) {
     out[surface] = upgradeSurface(surface, source[surface], version);
