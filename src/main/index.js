@@ -378,6 +378,22 @@ name: 'activity-full',
     },
   },
   {
+    // The only shot with a sleeve in a bubble. A player reports the song before
+    // its cover, so this is the case that has to survive a bubble being built
+    // first and painted with the cover afterwards.
+    name: 'compact-bubble-artwork',
+    prepare: () => {
+      prefs.load().widgets = ['volume', 'battery'];
+      state.bluetooth = {
+        devices: [{ address: 'AA-BB', name: 'AirPods Pro', connected: true, battery: 0.44, charging: false }],
+      };
+      // The one thing `compact-widgets` avoids: a zero `rate` keeps the song from
+      // becoming a live activity, and this shot is precisely about that bubble.
+      state.media = { ...STAGED_MEDIA, rate: 1, playbackState: 1, elapsed: 74 };
+      return 'compact';
+    },
+  },
+  {
     name: 'bt-hello',
     // A device that was not connected a moment ago: the widget greets it, then
     // settles back to its battery. No battery reported means no activity takes
@@ -482,8 +498,11 @@ async function captureReference () {
     for (const live of activities.liveTransfers()) activities.cancelTransfer(live.id);
     for (const timer of activities.liveTimers()) activities.cancelTimer(timer.timer.id);
     // A staged battery belongs to the shot that asked for it: everything else
-    // goes back to what the machine actually reports.
+    // goes back to what the machine actually reports. Music goes back to the
+    // staged track with `rate` at zero, which is deliberately not an activity, so
+    // a shot that stages a playing song does not open a bubble over the next one.
     state.battery = battery;
+    state.media = STAGED_MEDIA;
     state.bluetooth = bluetooth;
     state.input = input;
     state.airdrop = airdrop;

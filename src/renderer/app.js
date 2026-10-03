@@ -426,40 +426,6 @@ function bubble (activity) {
   node.dataset.activity = activity.id;
   node.dataset.kind = activity.kind;
 
-  // Charging and transferring get a little bar instead of a ring, because what
-  // matters there is the level walking from amber to green and the two dots
-  // closing on each other.
-  const bar = activity.kind === 'transfer' || activity.kind === 'battery';
-
-  if (activity.artwork) {
-    const image = document.createElement('img');
-    image.className = 'thumb';
-    image.src = activity.artwork;
-    node.append(image);
-  } else if (activity.kind === 'transfer') {
-    // A transfer bubble is just the AirDrop logo and its bar — the same two
-    // things the panel shows, small enough to sit beside the housing. The bar
-    // is AirDrop blue, not the amber-to-green of a charge.
-    node.style.setProperty('--charge', '#2f8bff');
-    node.insertAdjacentHTML('beforeend', icon('airdrop', { size: 18 }));
-    node.insertAdjacentHTML('beforeend',
-      '<span class="mini-bar"><i class="fill"></i><i class="dot from"></i><i class="dot to"></i></span>');
-  } else if (bar && activity.progress !== null && activity.progress !== undefined) {
-    node.insertAdjacentHTML('beforeend',
-      '<span class="mini-bar"><i class="fill"></i></span>');
-    tintCharge(node, activity.progress);
-  } else if (activity.progress !== null && activity.progress !== undefined) {
-    const ring = document.createElement('div');
-    ring.className = 'ring';
-    ring.style.setProperty('--progress', activity.progress);
-    ring.append(document.createElement('i'));
-    node.append(ring);
-  } else if (activity.kind === 'mic') {
-    node.insertAdjacentHTML('beforeend', '<span class="live"></span>');
-  } else {
-    node.insertAdjacentHTML('beforeend', icon(activity.icon, { size: 15 }));
-  }
-
   // A transfer says everything with its logo and bar, so it carries no label.
   if (activity.kind !== 'transfer') {
     const label = document.createElement('span');
@@ -467,6 +433,7 @@ function bubble (activity) {
     label.textContent = bubbleLabel(activity);
     node.append(label);
   }
+
   node.title = activity.subtitle ?? activity.title;
 
   node.addEventListener('click', (event) => {
@@ -475,7 +442,89 @@ function bubble (activity) {
     openPanel(`activity:${activity.id}`);
   });
   bindSwipe(node, activity);
+  paintBubble(node, activity);
   return node;
+}
+
+/**
+ * What a bubble wears in front of its label, and the one thing in it that has to
+ * be able to change after the node was built.
+ *
+ * A bubble node is built once and kept, because the transfer dots and the charge
+ * bar are animations that must not restart on every state push. That reuse is
+ * also why this exists: a player reports the song before its cover, so the first
+ * render of a bubble has nothing to put a sleeve in, and without a way to swap
+ * the whole thing out the cover simply never turned up — until the app was
+ * restarted. The same is true in the other direction: a cover that disappears has
+ * to take the sleeve away instead of leaving it behind under the next title.
+ */
+function bubbleVisual (activity) {
+  if (activity.artwork) return 'thumb';
+  // Charging and transferring get a little bar instead of a ring, because what
+  // matters there is the level walking from amber to green and the two dots
+  // closing on each other.
+  if (activity.kind === 'transfer') return 'transfer';
+  const hasProgress = activity.progress !== null && activity.progress !== undefined;
+  if (hasProgress && activity.kind === 'battery') return 'charge';
+  if (hasProgress) return 'ring';
+  if (activity.kind === 'mic') return 'live';
+  return 'glyph';
+}
+
+function paintBubble (node, activity) {
+  const visual = bubbleVisual(activity);
+  if (node.dataset.visual !== visual) {
+    node.dataset.visual = visual;
+    // Only the visual is replaced, and all of it: a transfer is two elements, so
+    // dropping the first match would leave the other behind under the next title.
+    // The label and the listeners stay, and so do the animations inside whichever
+    // visual is already there.
+    for (const child of node.querySelectorAll('.thumb, .ring, .mini-bar, .live, .icon')) child.remove();
+    node.style.removeProperty('--charge');
+    if (visual === 'thumb') {
+      const image = document.createElement('img');
+      image.className = 'thumb';
+      image.alt = '';
+      image.src = activity.artwork;
+      node.prepend(image);
+    } else if (visual === 'transfer') {
+      // A transfer bubble is just the AirDrop logo and its bar — the same two
+      // things the panel shows, small enough to sit beside the housing. The bar
+      // is AirDrop blue, not the amber-to-green of a charge.
+      node.style.setProperty('--charge', '#2f8bff');
+      node.insertAdjacentHTML('afterbegin', icon('airdrop', { size: 18 }));
+      node.insertAdjacentHTML('afterbegin',
+        '<span class="mini-bar"><i class="fill"></i><i class="dot from"></i><i class="dot to"></i></span>');
+    } else if (visual === 'charge') {
+      node.insertAdjacentHTML('afterbegin', '<span class="mini-bar"><i class="fill"></i></span>');
+      tintCharge(node, activity.progress);
+    } else if (visual === 'ring') {
+      const ring = document.createElement('div');
+      ring.className = 'ring';
+      ring.append(document.createElement('i'));
+      node.prepend(ring);
+    } else if (visual === 'live') {
+      node.insertAdjacentHTML('afterbegin', '<span class="live"></span>');
+    } else {
+      node.insertAdjacentHTML('afterbegin', icon(activity.icon, { size: 15 }));
+    }
+  }
+
+  // Everything below moves inside a visual that is already there, so the transfer
+  // dots and the charge bar keep their animation across renders.
+  const thumb = node.querySelector('.thumb');
+  if (thumb && thumb.getAttribute('src') !== activity.artwork) thumb.src = activity.artwork;
+  const mini = node.querySelector('.mini-bar');
+  if (mini) {
+    mini.style.setProperty('--progress', String(clamp(activity.progress ?? 0, 0, 1)));
+    // Only a charge bar walks amber to green; a transfer bar stays AirDrop blue.
+    if (activity.kind === 'battery') tintCharge(node, activity.progress);
+  }
+  const ring = node.querySelector('.ring');
+  if (ring) ring.style.setProperty('--progress', activity.progress);
+  // A finished transfer stops chasing and lights up blue, the same moment the
+  // check flashes in the panel.
+  if (activity.kind === 'transfer') node.classList.toggle('sent', Boolean(activity.done));
 }
 
 /**
@@ -507,22 +556,7 @@ function updateBubble (node, activity) {
   if (label && label.textContent !== want) label.textContent = want;
   if (node.dataset.kind !== activity.kind) node.dataset.kind = activity.kind;
   node.title = activity.subtitle ?? activity.title;
-
-  const artwork = node.querySelector('.thumb');
-  if (artwork && artwork.getAttribute('src') !== activity.artwork) artwork.src = activity.artwork;
-
-  const mini = node.querySelector('.mini-bar');
-  if (mini) {
-    mini.style.setProperty('--progress', String(clamp(activity.progress ?? 0, 0, 1)));
-    // Only a charge bar walks amber to green; a transfer bar stays AirDrop blue.
-    if (activity.kind === 'battery') tintCharge(node, activity.progress);
-  }
-  const ring = node.querySelector('.ring');
-  if (ring) ring.style.setProperty('--progress', activity.progress);
-
-  // A finished transfer stops chasing and lights up blue, the same moment the
-  // check flashes in the panel.
-  if (activity.kind === 'transfer') node.classList.toggle('sent', Boolean(activity.done));
+  paintBubble(node, activity);
 }
 
 /** Horizontal drag to dismiss. */

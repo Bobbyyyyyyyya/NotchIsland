@@ -100,6 +100,7 @@ class MediaRemoteBridge extends EventEmitter {
     this._restarts = 0;
     this._stopping = false;
     this._trackKey = null;
+    this._artworkKey = null;
     this._handoverTimer = null;
     this._commandErrorLogged = false;
   }
@@ -286,12 +287,26 @@ class MediaRemoteBridge extends EventEmitter {
 
     const current = this.current;
     const trackKey = current.uniqueIdentifier ?? current.contentItemIdentifier ?? current.title ?? null;
+    // MediaRemote hands over the cover before the title as often as after it, so
+    // the cover is tied to the title it arrived under: that is the only thing
+    // that tells a leftover from the previous track apart from one that is early.
+    const artworkHere = typeof current.artworkData === 'string' && current.artworkData.length > 0;
+
     if (trackKey !== this._trackKey) {
-      // Artwork arrives in a later update. Anything left over belongs to the
-      // previous track and must not be shown under the new title.
       this._trackKey = trackKey;
-      if (!hadArtwork) delete current.artworkData;
+      // A track change drops the previous cover, but only one that has already
+      // been seen under a *different* title. A cover that arrived before its own
+      // title has no title to be stale against, and throwing it away is how a
+      // song that does have artwork ends up with none for as long as the adapter
+      // does not happen to send it again.
+      if (!hadArtwork && this._artworkKey !== null && this._artworkKey !== trackKey) {
+        delete current.artworkData;
+        this._artworkKey = null;
+      }
     }
+
+    if (artworkHere) this._artworkKey = trackKey;
+    else if (!current.artworkData) this._artworkKey = null;
 
     this.emit('event', this._toMessage());
   }
