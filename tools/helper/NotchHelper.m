@@ -28,7 +28,6 @@
 #import <dlfcn.h>
 #import <errno.h>
 #import <unistd.h>
-#import <objc/message.h>
 #import <objc/runtime.h>
 
 #pragma mark - IO
@@ -324,17 +323,33 @@ static BOOL SetDefaultDevice(AudioObjectID device, BOOL isInput) {
 
 #pragma mark - Shared command centre
 
-// `sendMPRemoteCommandEvent:` exists at runtime but is missing from the SDK.
-@interface MPRemoteCommand (NotchHelperForwarding)
-- (void)sendMPRemoteCommandEvent:(nullable MPRemoteCommandEvent *)event;
-@end
+// `MPRemoteCommand.sendMPRemoteCommandEvent:` is the *inbound* door: it fires this
+// process's own targets, so a command sent that way comes straight back to us as
+// a `mediaKey` and never reaches Spotify or Music. Outgoing commands go through
+// `mediaremoted` instead, which routes them to whoever holds the now playing
+// session. That framework exports no command constant symbols, so the ids below
+// are the ones it documents.
+enum {
+    MRCommandPlay = 0,
+    MRCommandPause = 1,
+    MRCommandTogglePlayPause = 2,
+    MRCommandStop = 3,
+    MRCommandNextTrack = 4,
+    MRCommandPreviousTrack = 5,
+};
 
-static void SendRemote(MPRemoteCommand *command) {
-    if (![command respondsToSelector:@selector(sendMPRemoteCommandEvent:)]) {
+// Both resolved by `LoadMediaRemote` further down; NULL without the framework.
+static Boolean (*MRSendCommand)(unsigned int, id);
+static void (*MRSetElapsedTime)(double);
+static void LoadMediaRemote(void);
+
+static void SendCommand(unsigned int command) {
+    LoadMediaRemote();
+    if (!MRSendCommand) {
         Emit(@{@"event": @"error", @"message": @"remote command forwarding unavailable"});
         return;
     }
-    [command sendMPRemoteCommandEvent:nil];
+    MRSendCommand(command, nil);   // none of these commands need a userInfo
 }
 
 @interface SharedCommandCenter : NSObject
@@ -392,20 +407,17 @@ static void SendRemote(MPRemoteCommand *command) {
     [[center changePlaybackRateCommand] addTargetWithHandler:valueHandler];
 }
 
-- (void)play { SendRemote([MPRemoteCommandCenter sharedCommandCenter].playCommand); }
-- (void)pause { SendRemote([MPRemoteCommandCenter sharedCommandCenter].pauseCommand); }
-- (void)togglePlayPause { SendRemote([MPRemoteCommandCenter sharedCommandCenter].togglePlayPauseCommand); }
-- (void)next { SendRemote([MPRemoteCommandCenter sharedCommandCenter].nextTrackCommand); }
-- (void)previous { SendRemote([MPRemoteCommandCenter sharedCommandCenter].previousTrackCommand); }
+- (void)play { SendCommand(MRCommandPlay); }
+- (void)pause { SendCommand(MRCommandPause); }
+- (void)togglePlayPause { SendCommand(MRCommandTogglePlayPause); }
+- (void)next { SendCommand(MRCommandNextTrack); }
+- (void)previous { SendCommand(MRCommandPreviousTrack); }
 
 - (void)seek:(double)seconds {
-    // `initWithTimeInterval:` is not in the SDK but is present at runtime.
-    SEL init = NSSelectorFromString(@"initWithTimeInterval:");
-    if (![[MPChangePlaybackPositionCommandEvent alloc] respondsToSelector:init]) return;
-    id event = ((id (*)(id, SEL, double))objc_msgSend)([MPChangePlaybackPositionCommandEvent class], init, seconds);
-    if (![event isKindOfClass:[MPRemoteCommandEvent class]]) return;
-    MPRemoteCommand *command = [MPRemoteCommandCenter sharedCommandCenter].changePlaybackPositionCommand;
-    if ([command respondsToSelector:@selector(sendMPRemoteCommandEvent:)]) [command sendMPRemoteCommandEvent:event];
+    // Scrubbing is not one of the command ids: the system takes the new
+    // position directly, so it lands as a seek in the playing app.
+    LoadMediaRemote();
+    if (MRSetElapsedTime) MRSetElapsedTime(seconds);
 }
 
 @end
@@ -541,10 +553,8 @@ if (level < 0) return nil;
 - (NSImage *)resizedToFit:(CGFloat)maxDimension;
 @end
 
-static NSString *ArtworkDataURL(void) {
-    MPMediaItemArtwork *artwork = [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo[MPMediaItemPropertyArtwork];
-    if (!artwork) return nil;
-    NSImage *image = [artwork imageWithSize:CGSizeMake(160, 160)];
+/** Packs an image into the small PNG data URL the renderer caches by string. */
+static NSString *EncodeArtwork (NSImage *image) {
     if (!image) return nil;
     NSImage *scaled = [image resizedToFit:160];
     CGImageRef cgImage = [scaled CGImageForProposedRect:NULL context:nil hints:nil];
@@ -555,6 +565,79 @@ static NSString *ArtworkDataURL(void) {
     return [@"data:image/png;base64," stringByAppendingString:[png base64EncodedStringWithOptions:0]];
 }
 
+static NSString *ArtworkDataURL(void) {
+    MPMediaItemArtwork *artwork = [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo[MPMediaItemPropertyArtwork];
+    return EncodeArtwork(artwork ? [artwork imageWithSize:CGSizeMake(160, 160)] : nil);
+}
+
+#pragma mark - Now playing across every app
+
+// `MPNowPlayingInfoCenter` only reports the calling process's own session, so a
+// helper reads an empty dictionary no matter what Spotify or Music is doing.
+// `mediaremoted` is the daemon every now-playing widget on macOS talks to. Its
+// framework binary lives in the dyld shared cache rather than on disk, so every
+// entry point is resolved by name and MediaPlayer above stays as the fallback
+// for a system that no longer exports them.
+static void *MediaRemote = NULL;
+static void (*MRGetInfo)(dispatch_queue_t, void (^)(CFDictionaryRef));
+static void (*MRRegisterForNowPlaying)(dispatch_queue_t);
+static void (*MRGetIsPlaying)(dispatch_queue_t, void (^)(Boolean));
+
+/** The MediaRemote keys and notifications are exported constants holding their own name. */
+static CFStringRef MRConstant (const char *name) {
+    if (!MediaRemote) return NULL;
+    CFStringRef *slot = dlsym(MediaRemote, name);
+    return slot ? *slot : NULL;
+}
+
+static CFStringRef kMRTitle, kMRArtist, kMRAlbum, kMRDuration, kMRElapsed, kMRRate, kMRArtwork;
+static CFStringRef nMRInfoChanged, nMRPlayingChanged, nMRAppChanged;
+
+static void LoadMediaRemote (void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        MediaRemote = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY);
+        if (!MediaRemote) return;
+        MRGetInfo = (void (*)(dispatch_queue_t, void (^)(CFDictionaryRef)))
+            dlsym(MediaRemote, "MRMediaRemoteGetNowPlayingInfo");
+        MRRegisterForNowPlaying = (void (*)(dispatch_queue_t))
+            dlsym(MediaRemote, "MRMediaRemoteRegisterForNowPlayingNotifications");
+        MRGetIsPlaying = (void (*)(dispatch_queue_t, void (^)(Boolean)))
+            dlsym(MediaRemote, "MRMediaRemoteGetNowPlayingApplicationIsPlaying");
+        // Without the read there is nothing this path can do, so fall back whole.
+        if (!MRGetInfo) { MediaRemote = NULL; return; }
+        MRSendCommand = (Boolean (*)(unsigned int, id))
+            dlsym(MediaRemote, "MRMediaRemoteSendCommand");
+        MRSetElapsedTime = (void (*)(double))
+            dlsym(MediaRemote, "MRMediaRemoteSetElapsedTime");
+        kMRTitle = MRConstant("kMRMediaRemoteNowPlayingInfoTitle");
+        kMRArtist = MRConstant("kMRMediaRemoteNowPlayingInfoArtist");
+        kMRAlbum = MRConstant("kMRMediaRemoteNowPlayingInfoAlbum");
+        kMRDuration = MRConstant("kMRMediaRemoteNowPlayingInfoDuration");
+        kMRElapsed = MRConstant("kMRMediaRemoteNowPlayingInfoElapsedTime");
+        kMRRate = MRConstant("kMRMediaRemoteNowPlayingInfoPlaybackRate");
+        kMRArtwork = MRConstant("kMRMediaRemoteNowPlayingInfoArtworkData");
+        nMRInfoChanged = MRConstant("kMRMediaRemoteNowPlayingInfoDidChangeNotification");
+        nMRPlayingChanged = MRConstant("kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification");
+        nMRAppChanged = MRConstant("kMRMediaRemoteNowPlayingApplicationDidChangeNotification");
+    });
+}
+
+static id MRField (NSDictionary *info, CFStringRef key) {
+    if (!info || !key) return nil;
+    return info[(__bridge NSString *)key];
+}
+
+static NSString *MRText (NSDictionary *info, CFStringRef key) {
+    id value = MRField(info, key);
+    return [value isKindOfClass:[NSString class]] ? value : @"";
+}
+
+static double MRNumber (NSDictionary *info, CFStringRef key) {
+    id value = MRField(info, key);
+    return [value respondsToSelector:@selector(doubleValue)] ? [value doubleValue] : 0;
+}
+
 @interface NotchHelper : NSObject
 @property(nonatomic, copy) NSString *bluetoothSignature;
 @property(nonatomic, copy) NSString *inputSignature;
@@ -562,6 +645,15 @@ static NSString *ArtworkDataURL(void) {
 @property(nonatomic, copy) NSString *volumeSignature;
 @property(nonatomic) BOOL lastAirDropTransferring;
 @property(nonatomic) BOOL lastCallState;
+// Now playing: the last dictionary `mediaremoted` handed back, whether a
+// fetch has landed at all, and the identity of the track it described so a
+// missing cover does not clear the one already on screen.
+@property(nonatomic, strong) NSDictionary *mediaRemoteInfo;
+@property(nonatomic) BOOL mediaRemoteReady;
+@property(nonatomic) BOOL mediaRemotePlaying;
+@property(nonatomic, copy) NSString *trackIdentity;
+@property(nonatomic, copy) NSString *trackArtwork;
+@property(nonatomic) NSInteger nowPlayingTick;
 @end
 
 @implementation NotchHelper
@@ -573,21 +665,134 @@ static NSString *ArtworkDataURL(void) {
     return shared;
 }
 
-- (void)publishNowPlaying {
+/**
+ * The current playback session flattened into one dialect. Returns nil while
+ * the first MediaRemote answer is still in flight, and an empty dictionary
+ * once the system reports that nothing at all is playing.
+ */
+- (NSDictionary *)currentNowPlaying {
+    NSMutableDictionary *out = [NSMutableDictionary dictionary];
+    if (MediaRemote) {
+        if (!self.mediaRemoteReady) return nil;
+        NSDictionary *raw = self.mediaRemoteInfo;
+        if (!raw.count) return @{};
+        out[@"title"] = MRText(raw, kMRTitle);
+        out[@"artist"] = MRText(raw, kMRArtist);
+        out[@"album"] = MRText(raw, kMRAlbum);
+        out[@"duration"] = @(MRNumber(raw, kMRDuration));
+        out[@"elapsed"] = @(MRNumber(raw, kMRElapsed));
+        out[@"playing"] = @(self.mediaRemotePlaying);
+        // Some players leave the rate at zero while they are clearly running;
+        // the island reads a positive rate as playing.
+        out[@"rate"] = @(self.mediaRemotePlaying ? MAX(MRNumber(raw, kMRRate), 1.0) : 0);
+        out[@"source"] = @"";
+        id art = MRField(raw, kMRArtwork);
+        out[@"artworkData"] = [art isKindOfClass:[NSData class]]
+            ? (EncodeArtwork([[NSImage alloc] initWithData:art]) ?: [NSNull null])
+            : [NSNull null];
+        return out;
+    }
+
+    // MediaPlayer only ever describes this process. On a system without
+    // MediaRemote that is still the honest answer: nothing is playing.
     NSDictionary *info = [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo ?: @{};
+    if (!info.count) return @{};
+    out[@"title"] = info[MPMediaItemPropertyTitle] ?: @"";
+    out[@"artist"] = info[MPMediaItemPropertyArtist] ?: @"";
+    out[@"album"] = info[MPMediaItemPropertyAlbumTitle] ?: @"";
+    out[@"duration"] = info[MPMediaItemPropertyPlaybackDuration] ?: @0;
+    out[@"elapsed"] = info[MPNowPlayingInfoPropertyElapsedPlaybackTime] ?: @0;
+    out[@"rate"] = info[MPNowPlayingInfoPropertyPlaybackRate] ?: @0;
+    // 1 is `playing` in the playback state the property reports; the enum
+    // itself is marked unavailable on macOS even though the value is not.
+    out[@"playing"] = @([MPNowPlayingInfoCenter defaultCenter].playbackState == 1);
+    out[@"source"] = info[MPNowPlayingInfoPropertyExternalContentIdentifier] ?: @"";
+    out[@"artworkData"] = ArtworkDataURL() ?: [NSNull null];
+    return out;
+}
+
+- (void)publishNowPlaying {
+    NSDictionary *out = [self currentNowPlaying];
+    if (!out) return;   // MediaRemote has not answered yet, so say nothing
+
+    BOOL empty = out.count == 0;
+    NSString *identity = empty ? @"" : [NSString stringWithFormat:@"%@|%@|%@|%.3f|%d",
+        out[@"title"], out[@"artist"], out[@"album"],
+        [out[@"duration"] doubleValue], [out[@"playing"] boolValue]];
+
+    NSString *artwork = [out[@"artworkData"] isKindOfClass:[NSString class]] ? out[@"artworkData"] : nil;
+    BOOL trackChanged = self.trackIdentity == nil || ![identity isEqualToString:self.trackIdentity];
+    // A cover only arrives a beat after the track does; until then the one on
+    // screen belongs to this track, so do not blank it.
+    if (trackChanged) self.trackArtwork = artwork;
+    else if (!artwork) artwork = self.trackArtwork;
+    self.trackIdentity = identity;
+
+    // The renderer counts elapsed time locally, so it only needs a correction
+    // when something else moved or a few seconds have gone by.
+    NSInteger tick = ++self.nowPlayingTick;
+    if (!trackChanged && tick % 5 != 0) return;
+
     NSMutableDictionary *payload = [@{@"event": @"nowPlaying"} mutableCopy];
-    payload[@"empty"] = @(info.count == 0);
-    payload[@"state"] = @([MPNowPlayingInfoCenter defaultCenter].playbackState);
-    payload[@"title"] = info[MPMediaItemPropertyTitle] ?: @"";
-    payload[@"artist"] = info[MPMediaItemPropertyArtist] ?: @"";
-    payload[@"album"] = info[MPMediaItemPropertyAlbumTitle] ?: @"";
-    payload[@"duration"] = info[MPMediaItemPropertyPlaybackDuration] ?: @0;
-    payload[@"elapsed"] = info[MPNowPlayingInfoPropertyElapsedPlaybackTime] ?: @0;
-    payload[@"rate"] = info[MPNowPlayingInfoPropertyPlaybackRate] ?: @0;
-    payload[@"source"] = info[MPNowPlayingInfoPropertyExternalContentIdentifier] ?: @"";
-    NSString *artwork = ArtworkDataURL();
-    if (artwork) payload[@"artworkData"] = artwork;
+    payload[@"empty"] = @(empty);
+    payload[@"title"] = empty ? @"" : (out[@"title"] ?: @"");
+    payload[@"artist"] = empty ? @"" : (out[@"artist"] ?: @"");
+    payload[@"album"] = empty ? @"" : (out[@"album"] ?: @"");
+    payload[@"duration"] = empty ? @0 : (out[@"duration"] ?: @0);
+    payload[@"elapsed"] = empty ? @0 : (out[@"elapsed"] ?: @0);
+    payload[@"rate"] = empty ? @0 : (out[@"rate"] ?: @0);
+    payload[@"state"] = empty ? @0 : @([out[@"playing"] boolValue] ? 1 : 0);
+    payload[@"source"] = empty ? @"" : (out[@"source"] ?: @"");
+    payload[@"artworkData"] = artwork ?: [NSNull null];
     Emit(payload);
+}
+
+/** Asks `mediaremoted` for the session; the answer lands on the main queue. */
+- (void)refreshNowPlaying {
+    LoadMediaRemote();
+    if (!MRGetInfo) { [self publishNowPlaying]; return; }
+    __weak typeof(self) weakSelf = self;
+    MRGetInfo(dispatch_get_main_queue(), ^(CFDictionaryRef dict) {
+        __strong typeof(weakSelf) strong = weakSelf;
+        if (!strong) return;
+        strong.mediaRemoteInfo = dict ? [(__bridge NSDictionary *)dict copy] : nil;
+        strong.mediaRemoteReady = YES;
+        if (!MRGetIsPlaying) { [strong publishNowPlaying]; return; }
+        MRGetIsPlaying(dispatch_get_main_queue(), ^(Boolean playing) {
+            __strong typeof(weakSelf) inner = weakSelf;
+            if (!inner) return;
+            inner.mediaRemotePlaying = playing;
+            [inner publishNowPlaying];
+        });
+    });
+}
+
+/**
+ * Notifications are the fast path for a play/pause or a track change. The poll
+ * underneath is the safety net for a system that does not hand them to an
+ * unsigned helper, and it is what keeps the elapsed time honest.
+ */
+- (void)observeNowPlaying {
+    LoadMediaRemote();
+    if (MRRegisterForNowPlaying) MRRegisterForNowPlaying(dispatch_get_main_queue());
+    CFStringRef names[3] = { nMRInfoChanged, nMRPlayingChanged, nMRAppChanged };
+    for (int i = 0; i < 3; i++) {
+        if (!names[i]) continue;
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(nowPlayingChanged:)
+                                                     name:(__bridge NSString *)names[i]
+                                                   object:nil];
+    }
+    [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *timer) {
+        (void)timer;
+        [[NotchHelper shared] refreshNowPlaying];
+    }];
+    [self refreshNowPlaying];
+}
+
+- (void)nowPlayingChanged:(NSNotification *)note {
+    (void)note;
+    [self refreshNowPlaying];
 }
 
 - (void)publishDevices {
@@ -746,7 +951,7 @@ static NSString *ArtworkDataURL(void) {
         else if ([command isEqualToString:@"next"]) [[SharedCommandCenter shared] next];
         else if ([command isEqualToString:@"previous"]) [[SharedCommandCenter shared] previous];
         else if ([command isEqualToString:@"seek"]) [[SharedCommandCenter shared] seek:[args[@"value"] doubleValue]];
-        [self publishNowPlaying];
+        [self refreshNowPlaying];
     };
     [[SharedCommandCenter shared] bindRemoteCommands];
 
@@ -755,7 +960,7 @@ static NSString *ArtworkDataURL(void) {
     [center addObserver:self forKeyPath:@"playbackState" options:NSKeyValueObservingOptionNew context:NULL];
 
     [self observeAudioChanges];
-[self publishNowPlaying];
+[self observeNowPlaying];
      [self publishDevices];
      [self publishInput];
      [self publishBluetooth];
@@ -794,7 +999,7 @@ static NSString *ArtworkDataURL(void) {
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     (void)keyPath; (void)object; (void)change; (void)context;
-    [self publishNowPlaying];
+    [self refreshNowPlaying];
 }
 
 - (void)handleCommand:(NSString *)command args:(NSDictionary *)args {
@@ -832,6 +1037,8 @@ static NSString *ArtworkDataURL(void) {
         [self publishInput];
     } else if ([command isEqualToString:@"bluetooth"]) {
         [self publishBluetooth];
+    } else if ([command isEqualToString:@"nowPlaying"]) {
+        [self refreshNowPlaying];
     } else if ([command isEqualToString:@"battery"]) {
         [self publishBattery];
     } else if ([command isEqualToString:@"btConnect"] || [command isEqualToString:@"btDisconnect"]) {

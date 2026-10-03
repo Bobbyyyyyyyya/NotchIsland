@@ -12,20 +12,22 @@ all in the notch, with F7–F12 working the way they do on Apple hardware.
 | Widget | Shows |
 | --- | --- |
 | Music | artwork and progress while something is playing |
-| Bluetooth | battery of connected AirPods, Magic Mouse, Keyboard or Trackpad |
+| Bluetooth | battery of connected AirPods, Magic Mouse, Keyboard or Trackpad, and the name of whatever just connected |
 | Volume | level, or `Mute` when muted |
 | Mic | `Live` while an app is recording, `Off` when muted |
 | Battery | percentage, a bolt while charging, red below 20 % |
 | Meeting | red pulse while a microphone is in use |
 | Clipboard | the snippet you just copied |
-| Clock | time |
+| Clock | the time; clicking it opens the island on a large clock with seconds |
+| AirDrop | only while AirDrop's wireless link is up |
 | CPU | load |
 
 The island grows with the number of widgets, up to 560 pt; only when even that
 is not enough are widgets dropped from the outside in, the way the real island
-throws away detail to stay the size it is. Resting the pointer on it makes it
-swell a little, and a volume or microphone change gives it the same squash the
-system volume HUD does.
+throws away detail to stay the size it is. A greeting from a device that just
+connected is the last thing to go, since the row is full because of it. Resting
+the pointer on it makes it swell a little, and a volume or microphone change
+gives it the same squash the system volume HUD does.
 
 Everything in the island is drawn with inline SVG icons — there are no emoji or
 system glyphs anywhere, so it keeps one look on every macOS version.
@@ -40,12 +42,17 @@ the idle pill. Right now it reacts to:
 - plugging in or unplugging the charger
 - the battery filling up, and reaching 100 %
 - a countdown timer you start from the island
-- a file transfer to an AirDropped device
+
+An event never takes the row over on its own: the charging ring sits beside the
+clock and the player, and it is always a widget that is dropped first when the
+island runs out of room — an activity is never the thing that goes.
 
 A Bluetooth widget sits next to the housing and stays put even with nothing
 paired, so the island always has something on it. The moment an AirPods, Magic
 Mouse or Magic Keyboard connects, the widget gives a little hello — the icon
-ripples outward once, the way a device acknowledges a pairing.
+ripples outward once, the way a device acknowledges a pairing, and the pill
+names the device for a couple of seconds. The row makes room for it: it is the
+thing that just happened, so it is the last widget the island gives up.
 
 Two or more of those at once **split the island into two bubbles** that sit side
 by side on either side of the housing, and either one can be **swiped sideways to
@@ -66,14 +73,17 @@ long-press controls) to watch a send play out. The AirDrop logo ripples while a
 bar beneath it fills, two dots chasing each other along the bar until they meet;
 the bar turns blue, a check settles over the logo and it reads *Sent to…* for a
 second before the island folds away. Swipe the island sideways to call it off.
-This one is a simulation — macOS has no public feed for AirDrop events, so there
+This one is a simulation — macOS publishes no feed for AirDrop events, so there
 is nothing to watch for. It is driven from the main process (`transfer.start` /
-`transfer.cancel`) and is the same path a real sender would use.
+`transfer.cancel`) and is the same path a real sender would use. What the island
+*can* see is whether AirDrop's wireless link is up, and when it is, the AirDrop
+widget says so: `awdl0` exists whenever AirDrop is switched on, which proves
+reachability and nothing more, so no transfer is ever invented out of it.
 
 The island sizes itself to whatever is on it: the compact pill grows to fit the
-widgets or the activity bubbles flanking the housing, and the activity panels open
-tall enough for the battery and the AirDrop bar to sit centred, the way the real
-island makes room for what it is showing. A chevron in the top-right corner of an
+widgets and the activity bubbles flanking the housing, and the activity panels
+open tall enough for the battery and the AirDrop bar to sit centred, the way the
+real island makes room for what it is showing. A chevron in the top-right corner of an
 open island folds it back to the pill, the same as dragging it down or tapping it.
 
 **Expanded panels**
@@ -87,7 +97,14 @@ open island folds it back to the pill, the same as dragging it down or tapping i
 - **Microphone** — input volume, mute, device list, and a live indicator for
   apps that are recording.
 - **Bluetooth** — paired accessories with battery level, connect/disconnect.
+- **Battery** — the charge level as a big bar, whether it is charging, and how
+  long is left. It opens straight from the battery widget.
+- **Quick controls** — output, microphone, Bluetooth, player, clipboard,
+  settings and the timers, all on one screen: what a long press on the island
+  slides up.
 - **Clipboard** — the last 25 snippets, click to copy one back.
+- **Clock** — the time in large digits with the seconds running along, plus the
+  date.
 - **Settings** — shape, hover behaviour, media-key claim, widget toggles, live
   hotkey status and system facts.
 
@@ -167,9 +184,12 @@ PASS  drag down collapses  (-> 64)
 …13/13 checks passed
 ```
 
-`npm run dev -- --shot` is the fastest way to review the UI; it writes
-`compact.png`, `player.png`, `volume.png`, `mic.png`, `bluetooth.png`,
-`clipboard.png`, `settings.png` and `state.json` next to the app's preferences.
+`npm run dev -- --shot` is the fastest way to review the UI; it writes a PNG of
+every state — `compact`, `player`, `volume`, `mic`, `bluetooth`, `battery`,
+`clipboard`, `clock`, `settings`, `quick`, the activity states and `state.json` —
+next to the app's preferences. `airdrop-live`, `bt-hello` and `compact-bubbles`
+stage the cases that are hard to catch on their own: a live AirDrop link, a
+device that just connected, and three activities at once.
 
 ## Notes and limits
 
@@ -183,7 +203,8 @@ PASS  drag down collapses  (-> 64)
   which means the volume keys, Control Center and other apps all keep the island
   up to date.
 - The app is a menu bar app (`LSUIElement`), so it has no Dock icon; the tray
-  icon opens the settings panel.
+  icon opens a menu that lists every panel — quick controls, battery, clock and
+  the rest — alongside the demo actions and the preferences.
 - Display brightness control is not included: the private CoreGraphics entry
   points Apple used to expose (`IOFFramebufferGetLight`) are gone on current
   macOS, and `F1`/`F2` already work system wide.

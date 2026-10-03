@@ -18,11 +18,14 @@
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   /* Close to SwiftUI's default spring, used for everything inside the island. */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
-  /* The island's resting shadow and the colour it glows in, kept in variables so
-     the charging animation can retint the glow without restating the shadow. */
-  --shadow:
-    0 10px 22px rgba(0, 0, 0, 0.45),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.12);
+  /* The island's resting edge and the colour it glows in, kept in variables so
+     the charging animation can retint the glow without restating it.
+     The overlay window is exactly as wide as the island and has no room above
+     it, so anything drawn outside the border box is sliced off: the drop shadow
+     that used to sit here faded from black to transparent and then ended on a
+     hard line at both sides and the bottom of the window. The pill keeps only
+     its inset edge light, which needs no room at all. */
+  --shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.12);
   --glow: transparent;
   /* Charge colours, mixed by the renderer from the battery level. */
   --charge: #ff9f0a;
@@ -374,9 +377,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
     filter: blur(3px);
     transform: scale(0.92);
     opacity: 0;
-    transition: filter 0.18s var(--ease), transform 0.2s var(--spring), opacity 0.14s linear;
+    transition: filter 0.32s var(--ease), transform 0.36s var(--spring), opacity 0.26s linear;
 }
-.arm { transition: filter 0.2s var(--ease), transform 0.22s var(--spring), opacity 0.18s linear; }
+.arm { transition: filter 0.36s var(--ease), transform 0.4s var(--spring), opacity 0.32s linear; }
 #island.dragging { transition: none; }
 #island.dragging .arm { opacity: 0.35; }
 #island.pressed .arm { transform: scale(0.96); }
@@ -386,25 +389,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 #island:hover .arm { transform: scale(1.045); }
 #island:hover .widget { color: #fff; }
 
-/* Volume and microphone changes get the system HUD squash. */
-#island.pulse-volume { animation: squashX 0.6s var(--spring); }
-#island.pulse-mic { animation: squashY 0.6s var(--spring); }
-@keyframes squashX {
-   0% { transform: scale(1); }
-   16% { transform: scale(1.15); }
-   38% { transform: scale(0.95); }
-   62% { transform: scale(1.08); }
-   100% { transform: scale(1); }
-}
-@keyframes squashY {
-  0% { transform: scaleY(1) scaleX(1); }
-  16% { transform: scaleY(0.86) scaleX(1.08); }
-  38% { transform: scaleY(1.08) scaleX(0.97); }
-  62% { transform: scaleY(0.99) scaleX(1.01); }
-  100% { transform: scaleY(1) scaleX(1); }
-}
-
-/* The panels pop open instead of just appearing. */
+/* The panels pop open instead of just appearing. Kept short: the frame is still
+   catching up underneath it, and a long pop leaves the header on its own for
+   far longer than the copy needs. */
 #island:not([data-state="compact"]) .panels { animation: popOpen 0.36s var(--spring); }
 @keyframes popOpen {
   0% { transform: scale(0.93); opacity: 0; }
@@ -474,7 +461,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
     opacity: 0;
     pointer-events: none;
     cursor: pointer;
-    transition: opacity 0.16s linear, background 0.12s linear, color 0.12s linear, transform 0.12s var(--spring);
+    transition: opacity 0.3s linear, background 0.22s linear, color 0.22s linear, transform 0.24s var(--spring);
 }
 #island:not([data-state="compact"]) .island-collapse { opacity: 1; pointer-events: auto; }
 .island-collapse:hover { background: rgba(255, 255, 255, 0.12); color: #fff; transform: scale(1.1); }
@@ -486,7 +473,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   height: var(--band);
   flex: none;
   overflow: hidden;
-  transition: opacity 0.13s linear;
+  transition: opacity 0.26s linear;
 }
 
 /* Both arms are pinned to the edges of the housing and grow away from it, so
@@ -542,7 +529,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   color: rgba(255, 255, 255, 0.92);
   background: rgba(255, 255, 255, 0.07);
   white-space: nowrap;
-  transition: background 0.14s linear, color 0.14s linear, transform 0.2s var(--spring);
+  transition: background 0.26s linear, color 0.26s linear, transform 0.38s var(--spring);
 }
 .widget:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
 .widget:active { background: rgba(255, 255, 255, 0.2); transform: scale(0.94); }
@@ -576,6 +563,17 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   0% { transform: scale(0.7); opacity: 0.9; }
   60% { transform: scale(1.25); opacity: 0; }
   100% { transform: scale(1.3); opacity: 0; }
+}
+
+/* The greeting that rides along with the hello: the name counts in rather than
+   appearing, and gets the room a device name needs instead of a percentage's. */
+.widget.bt-hello .label {
+  max-width: 140px;
+  animation: helloLabel 0.34s var(--spring) backwards;
+}
+@keyframes helloLabel {
+  from { opacity: 0; transform: translateX(-5px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* The small bounce the island does when a widget's value changes. */
@@ -664,7 +662,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
     opacity: 0;
     transform: scale(0.97);
     transform-origin: top center;
-    transition: opacity 0.18s linear, transform 0.22s var(--ease);
+    transition: opacity 0.34s linear, transform 0.42s var(--ease);
 }
 #island:not([data-state="compact"]) .panels { opacity: 1; transform: none; }
 #island[data-state="compact"] .panels { pointer-events: none; }
@@ -1132,7 +1130,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   overflow: hidden;
   touch-action: none;
   will-change: transform;
-  transition: transform 0.28s var(--spring), background 0.14s linear, opacity 0.2s linear;
+  transition: transform 0.5s var(--spring), background 0.26s linear, opacity 0.36s linear;
 }
 .bubble:hover { background: rgba(255, 255, 255, 0.17); }
 .bubble.dragging { transition: none; }
@@ -1146,6 +1144,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The greeting names the device as well as the state, so the bubble needs a
+   little more room than a percentage or a countdown ever does. */
+.bubble[data-kind="bluetooth"] .label { max-width: 170px; }
 .bubble .ring { width: 18px; height: 18px; }
 .bubble .ring i { inset: 4px; }
 /* The ring takes the colour of the feature it belongs to. */
@@ -1217,6 +1218,12 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 /* Connected: the dots stop chasing, sit together and light up. */
 .bubble.sent .mini-bar > i.fill { background: #0a84ff; }
 .bubble.sent .mini-bar > i.dot { animation: none; background: #0a84ff; }
+
+/* A row that runs out of room drops the bubbles' words before anything is
+   clipped: the event stays, its label does not. */
+#island.bubbles-tight .bubble .label { display: none; }
+#island.bubbles-tight .bubble { padding: 0 9px; gap: 5px; }
+#island.bubbles-tight .bubble .mini-bar { width: 34px; }
 .bubble.sent .mini-bar > i.dot.from { transform: translateX(2px); }
 .bubble.sent .mini-bar > i.dot.to { transform: translateX(-2px); }
 .bubble .thumb { width: 20px; height: 20px; border-radius: 6px; }

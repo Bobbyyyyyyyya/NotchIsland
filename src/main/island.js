@@ -22,7 +22,15 @@ const EXPANDED_RADIUS = 20;
 /** Room below the island for its drop shadow; the window is taller than the island. */
 const SHADOW_ROOM = 26;
 /** A tween never runs longer than this, whatever it has been asked to do. */
-const TWEEN_LIMIT_MS = 900;
+const TWEEN_LIMIT_MS = 1400;
+/**
+ * Opening a panel is the one move that reads as staged: the frame starts at the
+ * compact pill's height, so the panel's copy is clipped until the window catches
+ * up and the eye sees the header alone before the rest of the panel. Growing
+ * hard here keeps that moment short. Every other move — collapsing, dragging,
+ * hopping between panels — keeps the slower spring.
+ */
+const OPEN_SPRING = { stiffness: 520, damping: 36 };
 
 class Island {
   constructor (prefs) {
@@ -31,6 +39,8 @@ class Island {
     this.notch = { x: 0, y: 0, width: 0, height: 0, detected: false };
     this.display = null;
     this.state = 'compact';
+    /** Called whenever `state` changes, so the tray radio items can follow. */
+    this.onStateChange = null;
     this.frame = { x: 0, y: 0, width: 220, height: 32 };
     this.pointerInside = false;
     this.hovering = false;
@@ -237,10 +247,13 @@ class Island {
     }
 
     const start = Date.now();
+    // The island is opening rather than merely moving: see `OPEN_SPRING`.
+    const opening = this.state !== 'compact' && target.height > from.height + 8;
+    const feel = opening ? OPEN_SPRING : undefined;
     this._springs = {
-      width: spring(from.width, target.width),
-      height: spring(from.height, target.height),
-      radius: spring(from.radius, radius),
+      width: spring(from.width, target.width, feel),
+      height: spring(from.height, target.height, feel),
+      radius: spring(from.radius, radius, feel),
     };
     this._tweenTarget = { ...target, radius };
     this._tweenDeadline = start + TWEEN_LIMIT_MS;
@@ -330,6 +343,7 @@ class Island {
   setState (state) {
     if (state === this.state) return;
     this.state = state;
+    this.onStateChange?.(state);
     this._applyFrame({ ...this.frame, radius: this.frame.radius ?? this.targetRadius });
   }
 
@@ -375,6 +389,7 @@ class Island {
 
     if (this.state === 'compact' && last < -18) {
       this.state = this.lastPanel ?? 'player';
+      this.onStateChange?.(this.state);
       // Through `_applyFrame` so the renderer and the skip check agree on what
       // it has already been told.
       this._applyFrame({ ...this.frame });
@@ -383,6 +398,7 @@ class Island {
     }
     if (this.state !== 'compact' && last > 26) {
       this.state = 'compact';
+      this.onStateChange?.(this.state);
       this._applyFrame({ ...this.frame });
       this.resize();
       return;

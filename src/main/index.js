@@ -10,6 +10,7 @@ const prefs = require('./prefs');
 const { HelperBridge } = require('./helper');
 const { Hotkeys } = require('./hotkeys');
 const { Island } = require('./island');
+const { MediaRemoteBridge } = require('./media-remote');
 
 /**
  * Notch Island — a Dynamic Island for the MacBook camera housing.
@@ -26,16 +27,18 @@ const BATTERY_POLL_MS = 2_000;
 const CPU_POLL_MS = 3000;
 
 const helper = new HelperBridge();
+const mediaRemote = new MediaRemoteBridge();
 const island = new Island(prefs);
 const hotkeys = new Hotkeys(handleHotkey);
 
 const state = {
-  media: { title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0, playbackState: 0, source: '' },
+  media: { title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0, playbackState: 0, source: '', preferredApp: null, controlled: false },
   volume: { value: 0, muted: false },
   input: { muted: false, volume: 1, active: [] },
   devices: { list: [], output: 0, input: 0 },
   battery: { level: 1, charging: false, minutes: -1, full: true },
   bluetooth: { devices: [] },
+  airdrop: { live: false },
   activities: [],
   clipboard: { items: [], lastSeen: '' },
   system: { cpu: 0, micAccess: 'unknown', displays: 0 },
@@ -68,12 +71,23 @@ async function bootstrap () {
   island.resize(null, { animate: false });
 
   createTray();
+  // The radio items mirror the panel the island is showing, so they are
+  // rebuilt whenever it changes instead of only once at startup.
+  island.onStateChange = () => refreshTrayMenu();
   helper.on('status', (status) => {
     state.helper = status;
+    syncControl();
     push();
   });
   helper.on('event', onHelperEvent);
   helper.start();
+
+  // MediaRemote is refused to this process on macOS 15.4 and up, so now
+  // playing data and transport come from the perl-hosted adapter. The helper
+  // keeps owning volume, devices and the media keys it does receive.
+  mediaRemote.on('event', onHelperEvent);
+  mediaRemote.on('status', () => { syncControl(); push(); });
+  mediaRemote.start();
 
   applyPreferences();
   startPolling();
@@ -102,6 +116,7 @@ app.on('before-quit', () => {
   clearInterval(cpuTimer);
   hotkeys.unregisterAll();
   helper.stop();
+  mediaRemote.stop();
 });
 
 /**
@@ -135,21 +150,25 @@ async function selftest () {
   // The bridge compiles on first launch, so give it a moment to come up.
   for (let attempt = 0; attempt < 40 && !helper.status().available; attempt++) await wait(250);
   check('system bridge', helper.status().available, helper.status().reason ?? 'ok');
+  // Without the adapter the player has no feed at all on macOS 15.4 and up.
+  for (let attempt = 0; attempt < 100 && !mediaRemote.status().available; attempt++) await wait(250);
+  check('media adapter', mediaRemote.status().available, mediaRemote.status().reason ?? 'ok');
   helper.send('devices');
   await wait(400);
   check('audio devices', state.devices.list.length > 0, `${state.devices.list.length} found`);
-  check('battery reported', state.battery.level > 0 && state.battery.level < 1,
+  for (let attempt = 0; attempt < 30 && !batteryReported; attempt++) await wait(200);
+  check('battery reported', batteryReported && state.battery.level >= 0 && state.battery.level <= 1,
     `${Math.round(state.battery.level * 100)}%`);
 
   // Dragging an open island down must collapse it again.
   run('panel.open', { state: 'player' });
-  await wait(450);
+  await wait(950);
   const open = frameOf();
   island.beginDrag();
   island.drag(60);
   const dragged = frameOf();
   island.endDrag();
-  await wait(450);
+  await wait(950);
   const collapsed = frameOf();
   check('drag shrinks the island', dragged.height < open.height - 10, `${open.height} -> ${dragged.height}`);
   check('drag down collapses', collapsed.height < open.height - 40, `-> ${collapsed.height}`);
@@ -158,7 +177,7 @@ async function selftest () {
   island.beginDrag();
   island.drag(-40);
   island.endDrag();
-  await wait(450);
+  await wait(950);
   check('drag up opens', island.state !== 'compact' && island.frame.height > collapsed.height,
     `${island.state} @ ${island.frame.height}`);
 
@@ -190,14 +209,19 @@ async function selftest () {
   check('transfer retires itself', !state.activities.some((activity) => activity.kind === 'transfer'));
   check('island folds away after it', island.state === 'compact', island.state);
 
-  // A full battery is the one activity that ends on its own too.
+  // A full battery is the one activity that ends on its own too. The helper
+  // keeps polling the real battery, and a countdown timer pushes every second,
+  // so without `capturing` the staged full battery is overwritten and re-derived
+  // away before the check lands.
   const battery = state.battery;
-state.battery = { ...battery, charging: true, level: 1, full: true };
-   push({ announce: false });
-   await wait(250);
-   check('a full battery reports itself', state.activities.some((activity) => activity.full === true),
-     state.activities.find((activity) => activity.id === 'charging')?.title ?? 'none');
-   state.battery = battery;
+  capturing = true;
+  state.battery = { ...battery, charging: true, level: 1, full: true };
+  push({ announce: false });
+  await wait(250);
+  check('a full battery reports itself', state.activities.some((activity) => activity.full === true),
+    state.activities.find((activity) => activity.id === 'charging')?.title ?? 'none');
+  state.battery = battery;
+  capturing = false;
   push({ announce: false });
   await wait(200);
 
@@ -229,6 +253,7 @@ const SHOTS = [
   { name: 'volume' },
   { name: 'mic' },
   { name: 'bluetooth' },
+  { name: 'battery' },
   { name: 'clipboard' },
   { name: 'clock' },
   { name: 'settings' },
@@ -286,6 +311,20 @@ name: 'activity-full',
     },
   },
   {
+    name: 'compact-bubbles',
+    // Three activities at once: an accessory, a recording app and a transfer.
+    // More bubbles than fit side by side, which is the case that must still read
+    // as one pill instead of spilling past its edges.
+    prepare: () => {
+      state.bluetooth = {
+        devices: [{ address: 'AA-BB', name: 'AirPods Pro', connected: true, battery: 0.44, charging: false }],
+      };
+      state.input = { muted: false, volume: 0.8, active: ['Voice Memos'] };
+      activities.startTransfer({ name: 'iPad', bytes: 24_000_000, durationMs: 9000 });
+      return 'compact';
+    },
+  },
+  {
     // Last, because it rewrites the widget row: the redesigned icons all in one
     // place, with album art to sit inside its progress ring. The preference is
     // only touched in memory, so the row goes back to the user's own on quit.
@@ -303,6 +342,32 @@ name: 'activity-full',
         duration: 246,
         elapsed: 74,
         artwork: COVER,
+      };
+      return 'compact';
+    },
+  },
+  {
+    name: 'airdrop-live',
+    // The wireless link is up: the widget shows that AirDrop is reachable.
+    // That is the whole of what macOS lets us honestly report about it.
+    prepare: () => {
+      prefs.load().widgets = ['airdrop', 'volume', 'battery'];
+      state.airdrop = { live: true };
+      return 'compact';
+    },
+  },
+  {
+    name: 'bt-hello',
+    // A device that was not connected a moment ago: the widget greets it, then
+    // settles back to its battery. No battery reported means no activity takes
+    // the row over, so this shot is the greeting itself.
+    prepare: () => {
+      // A short row, so the greeting has room and nothing else is dropped.
+      prefs.load().widgets = ['bluetooth', 'volume', 'battery'];
+      state.bluetooth = {
+        devices: [
+          { address: 'AA-BB', name: 'AirPods Pro', connected: true, battery: -1, charging: false },
+        ],
       };
       return 'compact';
     },
@@ -327,6 +392,12 @@ const STAGED_MEDIA = {
 async function captureReference () {
   const target = path.join(app.getPath('userData'), 'shot');
   fs.mkdirSync(target, { recursive: true });
+  // The helper reads the battery on a two-second timer and `capturing` blocks
+  // that feed, so a shot taken straight after launch would photograph the
+  // launch default of 100 % instead of the machine it is running on.
+  for (let attempt = 0; attempt < 30 && !batteryReported; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
   capturing = true;
   // The page must be live before the panels can be captured.
   if (island.window.webContents.isLoading()) {
@@ -339,6 +410,11 @@ async function captureReference () {
   // the player panel and the widget row. A zero `rate` keeps the song from
   // becoming a live activity, which would open over the capture.
   state.media = STAGED_MEDIA;
+  // Accessories and recording apps are staged by a shot as well, so the machine
+  // gets its own state back before the next one starts.
+  const bluetooth = state.bluetooth;
+  const input = state.input;
+  const airdrop = state.airdrop;
 
   for (const shot of SHOTS) {
     // An activity opening on its own would hijack the capture, and a transfer
@@ -349,13 +425,16 @@ async function captureReference () {
     // A staged battery belongs to the shot that asked for it: everything else
     // goes back to what the machine actually reports.
     state.battery = battery;
+    state.bluetooth = bluetooth;
+    state.input = input;
+    state.airdrop = airdrop;
     // A staged shot may return the state it needs, since a transfer only exists
     // under an id the module just made up.
     const staged = shot.prepare?.(battery) ?? null;
     island.setState(shot.state ?? staged ?? shot.name);
     island.resize(null, { animate: false });
     push({ announce: false });
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     const image = await island.window.webContents.capturePage();
     fs.writeFileSync(path.join(target, `${shot.name}.png`), image.toPNG());
     fs.writeFileSync(path.join(target, 'state.json'), JSON.stringify(snapshot(), null, 2));
@@ -379,6 +458,8 @@ async function captureReference () {
       };
       return JSON.stringify({
         state: document.getElementById('island').dataset.state,
+        activePanel: document.querySelector('.panel.active')?.dataset.panel ?? 'none',
+        activePanels: [...document.querySelectorAll('.panel.active')].map((p) => p.dataset.panel),
         island: document.getElementById('island').getBoundingClientRect().width,
         left: arm('armLeft'), right: arm('armRight'), gap: Math.round(document.getElementById('notchGap').getBoundingClientRect().width),
         requested: window.__island.view.frame.width,
@@ -437,6 +518,7 @@ async function captureReference () {
 function applyPreferences () {
   state.hotkeys = hotkeys.apply(prefs.load());
   app.setLoginItemSettings({ openAtLogin: prefs.get('launchAtLogin') === true, openAsHidden: true });
+  refreshTrayMenu();
   push();
 }
 
@@ -464,6 +546,13 @@ let activityTimer = null;
  * out from under the capture (and fold the panel it just opened).
  */
 let capturing = false;
+
+/**
+ * The helper reads the system battery on a two-second timer, so `state.battery`
+ * still holds its initial value for the first couple of seconds of a launch.
+ * The selftest waits on this instead of guessing how long that takes.
+ */
+let batteryReported = false;
 
 function refreshActivities () {
   const now = Date.now();
@@ -516,9 +605,9 @@ const actions = {
   'media.playPause': () => run('media.command', { command: 'togglePlayPause' }),
   'media.play': () => run('media.command', { command: 'play' }),
   'media.pause': () => run('media.command', { command: 'pause' }),
-  'media.next': () => helper.send('next'),
-  'media.previous': () => helper.send('previous'),
-  'media.seek': ({ seconds }) => helper.send('seek', { value: seconds }),
+  'media.next': () => run('media.command', { command: 'next' }),
+  'media.previous': () => run('media.command', { command: 'previous' }),
+  'media.seek': ({ seconds }) => run('media.command', { command: 'seek', value: seconds }),
 
   'volume.set': ({ value }) => helper.send('volume', { value }),
   'volume.nudge': ({ delta }) => helper.send('nudgeVolume', { value: delta }),
@@ -569,14 +658,16 @@ const actions = {
     const app = state.media.preferredApp ?? 'Music';
     shell.openExternal(`${app.toLowerCase().replace(/\s+/g, '')}://`);
   },
-  'media.command': ({ command }) => {
+  'media.command': ({ command, ...rest }) => {
     // Give the user feedback: with nothing playing the system has nowhere to
     // send the command, which otherwise looks like a broken button.
     if (!state.media.title) {
       island.send('toast', { message: 'Nothing is playing' });
       return;
     }
-    helper.send(command);
+    // The adapter is the only path that reaches the player on macOS 15.4+; the
+    // helper is kept for the versions where its command centre still works.
+    if (!mediaRemote.command(command, rest.value)) helper.send(command, rest);
   },
 
   'bluetooth.connect': ({ address }) => helper.send('btConnect', { address }),
@@ -620,6 +711,11 @@ function run (name, args = {}) {
   action(args);
 }
 
+/** Transport buttons are live whenever either path can deliver a command. */
+function syncControl () {
+  state.media.controlled = mediaRemote.available || helper.status().available;
+}
+
 function cycleDevice (isInput) {
   const list = state.devices.list.filter((device) => device.input === isInput);
   if (list.length < 2) return;
@@ -646,16 +742,23 @@ ipcMain.on('island:drag', (_event, { phase, deltaY }) => {
 function onHelperEvent (message) {
   switch (message.event) {
     case 'nowPlaying':
+      // The helper keeps reporting an empty feed because mediaremoted refuses
+      // it. While the adapter is up that is noise, and it would clear the song.
+      if (message.via !== 'adapter' && mediaRemote.available) break;
       state.media = {
         title: message.title ?? '',
         artist: message.artist ?? '',
         album: message.album ?? '',
-        artwork: message.artworkData ?? state.media.artwork,
+        // The helper always sends the key: a cover it no longer has has to
+        // clear the one on screen instead of leaving the previous track's.
+        artwork: message.artworkData || null,
         duration: message.duration ?? 0,
         elapsed: message.elapsed ?? 0,
         rate: message.rate ?? 0,
         playbackState: message.state ?? 0,
         source: message.source ?? '',
+        preferredApp: message.preferredApp ?? null,
+        controlled: state.media.controlled,
       };
       if (message.empty) state.media = { ...state.media, title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0 };
       break;
@@ -671,19 +774,22 @@ function onHelperEvent (message) {
       state.input = { muted: message.muted, volume: message.volume, active: message.active ?? [] };
       break;
     case 'battery':
+      batteryReported = true;
       if (!capturing) {
         state.battery = { level: message.battery.level, charging: message.battery.charging, minutes: message.battery.minutes, full: message.battery.full };
       }
       break;
-case 'bluetooth':
+    case 'bluetooth':
        state.bluetooth = { devices: message.devices ?? [] };
        break;
-     case 'airdrop':
-       if (message.transferring) {
-         const id = activities.startTransfer({ name: 'AirDrop', bytes: 24_000_000, durationMs: 5000 });
-         push();
-         presentActivity(id);
-       }
+    case 'airdrop':
+       // The interface being up is not a transfer. macOS has no public feed for
+       // AirDrop, and `awdl0` is present whenever AirDrop is switched on, so
+       // treating it as one had the island opening a send that never happened
+       // every time the interface blinked. All it honestly proves is that
+       // AirDrop is reachable, which is what the widget says. The animation is
+       // still started by hand from the tray (`transfer.start`).
+       state.airdrop = { live: Boolean(message.transferring) };
        break;
      case 'call':
        if (message.incoming) {
@@ -693,10 +799,13 @@ case 'bluetooth':
          presentActivity(timer?.id);
        }
        break;
-     case 'mediaKey':
-      // The user pressed a media key and macOS routed it to us: forward it on.
-      helper.send(message.key, message.value === undefined ? {} : { value: message.value });
-      break;
+      case 'mediaKey':
+       // The user pressed a media key and macOS routed it to us: forward it on.
+       if (!mediaRemote.command(message.key, message.value)) {
+         helper.send(message.key, message.value === undefined ? {} : { value: message.value });
+       }
+       break;
+
     case 'toast':
       island.send('toast', message);
       break;
@@ -783,6 +892,11 @@ function kindOf (text) {
 function snapshot () {
   return {
     ...state,
+    // The renderer reads this back: while `--shot` composes a scene the pointer
+    // must not fold the panel it just opened. A cursor resting on the notch makes
+    // the island fire a mouseleave whenever it changes size, and the capture
+    // photographs the compact pill instead of the panel.
+    capturing,
     prefs: prefs.load(),
     geometry: island.geometry(),
     helper: helper.status(),
@@ -845,7 +959,7 @@ tray.setContextMenu(Menu.buildFromTemplate([
      { label: 'Timer: 10 min', click: () => run('timer.start', { minutes: 10 }) },
      { label: 'Timer: 25 min', click: () => run('timer.start', { minutes: 25 }) },
      { type: 'separator' },
-     ...['player', 'volume', 'mic', 'bluetooth', 'clipboard', 'settings'].map((id) => ({
+     ...['quick', 'player', 'volume', 'mic', 'bluetooth', 'battery', 'clipboard', 'clock', 'settings'].map((id) => ({
       label: labelForPanel(id),
       type: 'radio',
       checked: panel === id,
@@ -877,11 +991,14 @@ tray.setContextMenu(Menu.buildFromTemplate([
 
 function labelForPanel (id) {
   return {
+    quick: 'Quick controls',
     player: 'Player',
     volume: 'Sound',
     mic: 'Microphone',
     bluetooth: 'Bluetooth',
+    battery: 'Battery',
     clipboard: 'Clipboard',
+    clock: 'Clock',
     settings: 'Settings',
   }[id] ?? id;
 }

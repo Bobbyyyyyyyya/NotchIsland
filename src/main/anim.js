@@ -32,7 +32,7 @@ function interpolateRect (from, to, elapsed, duration) {
  * the spring is already moving keeps its momentum instead of stuttering.
  */
 function spring (from, to, options = {}) {
-  const { stiffness = 420, damping = 34, mass = 1, precision = 0.4 } = options;
+  const { stiffness = 220, damping = 25, mass = 1, precision = 0.4 } = options;
   const step = 1 / 240; // fixed timestep keeps the integration stable
   let value = from;
   let velocity = 0;

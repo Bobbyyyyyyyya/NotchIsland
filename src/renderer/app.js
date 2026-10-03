@@ -27,8 +27,12 @@ const view = {
   snapshot: null,
   widgetNodes: new Map(),
   bubbleNodes: new Map(),
+  bubbleCount: 0,
+  tightBubbles: 0,
   widgetSignature: '',
   appliedState: 'compact',
+  connectedBluetooth: null,
+  bluetoothHello: null,
   sections: {},
   band: 38,
   lastActivity: null,
@@ -69,6 +73,32 @@ function tintCharge (node, level) {
   const { base, soft } = chargeColor(level);
   node.style.setProperty('--charge', base);
   node.style.setProperty('--charge-soft', soft);
+}
+
+/** The addresses currently connected, so the next render can spot an arrival. */
+function connectedAddresses (devices) {
+  return new Set(devices.filter((device) => device.connected).map((device) => device.address));
+}
+
+/**
+ * A device that just connected says so in the row for a few seconds: the widget
+ * swells, the icon gives its ripple and the pill reads "Connected to …" before it
+ * settles back to the battery percentage. The greeting lives in the view rather
+ * than in the node, so a re-render cannot take it away halfway.
+ */
+const HELLO_MS = 2600;
+let helloTimer = null;
+
+function greetBluetooth (name) {
+  view.bluetoothHello = name;
+  clearTimeout(helloTimer);
+  helloTimer = setTimeout(() => {
+    if (view.bluetoothHello !== name) return;
+    view.bluetoothHello = null;
+    if (!view.snapshot) return;
+    renderWidgets(view.snapshot);
+    requestSize(); // the pill was wider than the circle it turns back into
+  }, HELLO_MS);
 }
 
 function timecode (seconds) {
@@ -157,7 +187,7 @@ const WIDGETS = {
     },
   },
 
-   battery: {
+  battery: {
     label: 'Battery',
     render (state) {
       const { level, charging, minutes } = state.battery;
@@ -192,11 +222,32 @@ const WIDGETS = {
         .filter((device) => device.connected && device.battery >= 0)
         .sort((a, b) => a.battery - b.battery)[0];
 
+      // A device that was not connected a moment ago is the one worth greeting,
+      // whatever its battery is doing. The first render only learns what is
+      // already there: nothing says hello to what was paired before launch.
+      const seen = view.connectedBluetooth;
+      const arrived = seen && devices.find((device) => device.connected && !seen.has(device.address));
+      view.connectedBluetooth = new Set(devices.filter((device) => device.connected).map((device) => device.address));
+      if (arrived) greetBluetooth(arrived.name);
+
       const node = document.createElement('button');
       const low = tracked && tracked.battery <= 0.2;
-      node.className = `widget${tracked ? ' readout' : ''}${low ? ' alert' : ''}${tracked && tracked.charging ? ' is-charging' : ''}`;
+      const hello = view.bluetoothHello;
+      node.className = `widget${tracked || hello ? ' readout' : ''}${low ? ' alert' : ''}${tracked && tracked.charging ? ' is-charging' : ''}${hello ? ' bt-hello' : ''}`;
       node.dataset.panelOpen = 'bluetooth';
       node.insertAdjacentHTML('beforeend', icon('bluetooth', { size: 14 }));
+      if (hello) {
+        // The row is a tight space, so the widget carries only the name and the
+        // full "Connected to …" is what the activity bubble says — that one owns
+        // the island while the accessory is there.
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = hello;
+        node.append(label);
+        node.classList.add('bt-connect');
+        node.title = `Connected to ${hello}`;
+        return node;
+      }
       if (tracked && tracked.charging) {
         const charging = document.createElement('span');
         charging.className = 'charging';
@@ -243,14 +294,14 @@ const WIDGETS = {
   airdrop: {
     label: 'AirDrop',
     render (state) {
-      // AirDrop only earns a place in the row while a transfer is actually
-      // running; the transfer bubble takes the island over for that stretch.
-      const live = state.activities.some((a) => a.kind === 'transfer');
-      if (!live) return null;
+      // AirDrop earns a place in the row while the wireless link is live, and
+      // only then: macOS gives no way to watch an actual transfer, so this is
+      // the one honest thing to say about it.
+      if (!state.airdrop?.live) return null;
       const node = document.createElement('div');
       node.className = 'widget';
       node.insertAdjacentHTML('beforeend', icon('airdrop', { size: 14 }));
-      node.title = 'AirDrop';
+      node.title = 'AirDrop is ready';
       return node;
     },
   },
@@ -312,6 +363,12 @@ const WIDGETS = {
  */
 function bubbleLabel (activity) {
   if (activity.kind === 'timer') return (activity.subtitle || activity.title).replace(/ left$/, '');
+  // A device that just connected says so here too, for the same few seconds:
+  // whether the greeting lands on the widget pill or on this bubble, it reads
+  // "Connected to …" the moment the accessory shows up.
+  if (activity.kind === 'bluetooth' && view.bluetoothHello === activity.title) {
+    return `Connected to ${activity.title}`;
+  }
   return activity.title;
 }
 
@@ -458,9 +515,10 @@ function bindSwipe (node, activity) {
   node.addEventListener('pointercancel', release);
 }
 
-/** Bounces a widget when its headline value changed since the last render. */
+/** Bounces the widgets whose headline value changed since the last render. */
 function popChangedWidgets (nodes, state) {
-  const signature = state.prefs.widgets.map((id) => {
+  const ids = state.prefs.widgets;
+  const values = ids.map((id) => {
     if (id === 'media') return state.media.title;
     if (id === 'clipboard') return state.clipboard.items[0]?.text ?? '';
     if (id === 'volume') return `${Math.round(state.volume.value * 100)}${state.volume.muted}`;
@@ -468,37 +526,26 @@ function popChangedWidgets (nodes, state) {
     if (id === 'battery') return `${Math.round(state.battery.level * 100)}${state.battery.charging ? 'c' : ''}`;
     if (id === 'bluetooth') return state.bluetooth.devices.map((device) => device.battery).join();
     return '';
-  }).join('|');
+  });
 
-  if (view.widgetValues !== undefined && view.widgetValues !== signature) {
+  const previous = view.widgetValues;
+  const differs = previous !== undefined
+    && (previous.length !== values.length || previous.some((value, index) => value !== values[index]));
+  if (differs) {
+    const changed = ids.filter((id, index) => previous[index] !== values[index]);
     for (const node of nodes) {
+      if (!changed.includes(node.dataset.widget)) continue;
       node.classList.remove('pop');
       void node.offsetWidth; // restart the animation
       node.classList.add('pop');
     }
-    nudge();
+    // Volume and the microphone move several times a second while a key is
+    // held, and every step of them used to shove the whole island. They stay
+    // local: only a change in what the row actually says may push the pill.
+    if (changed.some((id) => id !== 'volume' && id !== 'mic')) nudge();
   }
 
-  // A volume change gets its own squash, the way the system volume HUD pulses.
-  const volume = Math.round(state.volume.value * 100) + (state.volume.muted ? 'm' : '');
-  if (view.lastVolume !== undefined && view.lastVolume !== volume) pulse('volume');
-  view.lastVolume = volume;
-
-  const muted = `${state.input.muted}${state.input.active.join()}`;
-  if (view.lastMuted !== undefined && view.lastMuted !== muted) pulse('mic');
-  view.lastMuted = muted;
-
-  view.widgetValues = signature;
-}
-
-/** One shot animation class; restarting it needs a reflow in between. */
-function pulse (name) {
-  const node = root;
-  const className = `pulse-${name}`;
-  node.classList.remove(className);
-  void node.offsetWidth;
-  node.classList.add(className);
-  setTimeout(() => node.classList.remove(className), 620);
+  view.widgetValues = values;
 }
 
 /** The little push the island gives when its content changes underneath it. */
@@ -576,18 +623,22 @@ function renderWidgets (state) {
     if (!wanted.includes(id)) view.widgetNodes.delete(id);
   }
 
-  // While something is happening the island shows the event, not the widgets:
-  // the same takeover the iPhone does with a call or a timer.
+  // An event sits beside the widgets instead of taking the row over, so a phone
+  // charging in the corner does not clear the clock and the player out of the
+  // island. `requestSize` sheds widgets from the widest arm until both fit, and
+  // never sheds a bubble — so the charging ring stays even in a crowded row.
   const bubbles = renderBubbles(state);
-  const rendered = bubbles.length ? bubbles : widgets;
+  const rendered = [...bubbles, ...widgets];
   root.classList.toggle('bubbles', bubbles.length > 0);
+  view.bubbleCount = bubbles.length;
 
-  const split = Math.ceil(rendered.length / 2);
+  // The odd one out goes to the left, so an odd number of bubbles does not tip
+  // the whole row towards one side of the housing.
+  const split = Math.floor(rendered.length / 2);
   el('armLeft').replaceChildren(...rendered.slice(split));
   el('armRight').replaceChildren(...rendered.slice(0, split));
-  // A bubble must not bounce because the volume changed, so the pop only ever
-  // lands on widgets even while the activities own the row.
-  popChangedWidgets(bubbles.length ? widgets : rendered, state);
+  // A bubble must not bounce because the volume changed.
+  popChangedWidgets(widgets, state);
   requestSize();
 }
 
@@ -611,7 +662,7 @@ function renderPlayer (state) {
 
   el('playerTitle').textContent = media.title || (media.playbackState > 0 ? 'Playing music' : 'Nothing playing');
 el('playerSub').textContent = media.artist
-     || (media.playbackState > 0 ? 'Apple Music' : (state.helper.available ? 'Press play with F8' : 'Install the system bridge for control'));
+     || (media.playbackState > 0 ? (media.preferredApp || 'Apple Music') : (state.media.controlled ? 'Press play with F8' : 'Install the system bridge for control'));
 
   el('progressFill').style.width = `${progressOf(media) * 100}%`;
   el('elapsed').textContent = timecode(media.elapsed);
@@ -622,7 +673,7 @@ el('playerSub').textContent = media.artist
   el('buttonPrevious').innerHTML = icon('previous', { size: 17, filled: true });
   el('buttonNext').innerHTML = icon('next', { size: 17, filled: true });
   for (const button of ['buttonPlay', 'buttonPrevious', 'buttonNext']) {
-    el(button).disabled = !state.helper.available;
+    el(button).disabled = !state.media.controlled;
   }
 
   // With no app publishing a session the transport keys have nothing to talk to,
@@ -865,8 +916,16 @@ function renderBattery (state) {
    if (bolt) {
      bolt.innerHTML = icon(full ? 'checkFill' : 'batteryBolt', { size: 25, filled: true });
    }
-   const stateEl = el('batteryPanelState');
-   if (stateEl) stateEl.textContent = charging ? (full ? 'Fully charged' : 'Charging') : `${minutes > 0 ? `${minutes} min left` : `${percent}%`}`;
+  const stateEl = el('batteryPanelState');
+  // Never repeat the percentage beside itself: without a time estimate the old
+  // fallback was the same number the line under it already showed.
+  if (stateEl) {
+    stateEl.textContent = full
+      ? 'Fully charged'
+      : charging
+        ? 'Charging'
+        : (minutes > 0 ? `${minutes} min left` : 'On battery');
+  }
    const pctEl = el('batteryPanelPercent');
    if (pctEl) pctEl.textContent = `${percent}%`;
  }
@@ -1076,7 +1135,7 @@ function markMorph () {
   if (root.classList.contains('morphing')) return;
   root.classList.add('morphing');
   clearTimeout(morphTimer);
-  morphTimer = setTimeout(() => root.classList.remove('morphing'), 260);
+  morphTimer = setTimeout(() => root.classList.remove('morphing'), 480);
 }
 
 function escapeHtml (value) {
@@ -1137,17 +1196,20 @@ function formatRadius (value) {
  * Natural width of an arm's content. Widgets never shrink, so this measurement
  * does not depend on how wide the island happens to be right now.
  */
-function armContentWidth (arm) {
+function armContentWidth (arm, keep = null) {
   let total = 0;
-  for (const child of arm.children) total += child.offsetWidth + 3;
+  for (const child of arm.children) {
+    if (keep && !keep(child)) continue;
+    total += child.offsetWidth + 3;
+  }
   return total;
 }
 
 /** Bubbles are wider than widgets, so the island measures them the same way. */
-function compactWidth () {
+function compactWidth (keep = null) {
   const EDGE = 4; // breathing room between the widgets and the island's edge
-  const left = armContentWidth(el('armLeft'));
-  const right = armContentWidth(el('armRight'));
+  const left = armContentWidth(el('armLeft'), keep);
+  const right = armContentWidth(el('armRight'), keep);
   // The island is centred on the housing, so each arm only ever gets half of
   // (width - notch). Both arms must fit their half, which means the island has
   // to be as wide as the *larger* arm — not the sum of the two, which is what
@@ -1200,6 +1262,7 @@ function requestSize () {
     // The panel only needs as much height as its content. `scrollHeight` cannot
     // be used here: it reports the box height, which is whatever the island
     // happens to be right now, so the panel would never shrink again.
+    root.classList.remove('bubbles-tight');
     ask({ width: expandedWidth(), height: panelHeight() });
     return;
   }
@@ -1207,13 +1270,41 @@ function requestSize () {
   const left = el('armLeft');
   const right = el('armRight');
 
+  // A bubble is never dropped — an event that vanishes because the row is a
+  // little too full loses the whole point. What it sheds instead are the words:
+  // that is the difference between a tight row and one that spills past the
+  // island's edge and gets clipped.
+  //
+  // Once the row has been too full it stays wordless until there is room again.
+  // Measuring with the labels hidden would say it fits and bring them straight
+  // back, which is the overflow this is here to prevent. Only the bubbles are
+  // measured: widgets now share the row, so the total width says nothing about
+  // whether a bubble's own words fit.
+  const onlyBubbles = (node) => node.classList.contains('bubble');
+  if (root.classList.contains('bubbles') && compactWidth(onlyBubbles) > view.maxWidth) {
+    view.tightBubbles = view.bubbleCount;
+  } else if (!root.classList.contains('bubbles')) {
+    view.tightBubbles = 0;
+  }
+  root.classList.toggle('bubbles-tight',
+    view.tightBubbles > 0 && view.bubbleCount >= view.tightBubbles);
+
   // The compact island is width limited: when the widgets do not fit, the widest
   // arm gives up its last widget until they do. The real Dynamic Island drops
   // detail in exactly the same way. Activity bubbles are never dropped — hiding
   // an event because it is a little too wide would lose the whole point.
   while (compactWidth() > view.maxWidth && left.children.length + right.children.length > 2) {
-    const widest = armContentWidth(left) >= armContentWidth(right) ? left : right;
-    const candidate = [...widest.children].reverse().find((child) => !child.classList.contains('bubble'));
+    // The greeting keeps its place: it is the thing that just happened, and the
+    // row is full because of it. Every other widget goes first, from whichever
+    // arm has the most to give. It still goes last, so nothing is ever pushed
+    // past the island's edge.
+    const arms = [left, right].sort((a, b) => armContentWidth(b) - armContentWidth(a));
+    const droppable = (node) => !node.classList.contains('bubble') && !node.classList.contains('bt-hello');
+    const candidate = arms
+      .map((arm) => [...arm.children].reverse().find(droppable))
+      .find(Boolean) ?? arms
+      .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble')))
+      .find(Boolean);
     if (!candidate) break; // only bubbles left; never drop an active event
     candidate.remove();
   }
@@ -1249,8 +1340,12 @@ let drag = null;
 let pressTimer = null;
 root.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
-  // Buttons, sliders and bubbles keep their own behaviour.
-  if (event.target.closest('button, .slider, .progress, input, select')) return;
+  // Sliders, progress bars, bubbles and inputs keep their own behaviour: they
+  // capture the pointer and a held press would fight it. A widget is different —
+  // the arms are made of widgets, so excluding them too would leave the compact
+  // island with nowhere to be long-pressed at all.
+  if (!event.target.closest('.widget')
+    && event.target.closest('button, .slider, .progress, input, select')) return;
 
   // A long press reveals the extra controls without opening a panel first.
   pressTimer = setTimeout(() => {
@@ -1339,17 +1434,22 @@ el('retryHelper').addEventListener('click', () => api.action('helper.retry', {})
 
 let hoverTimer = null;
 root.addEventListener('mouseenter', () => {
-  clearTimeout(hoverTimer);
-  if (view.hoverToExpand && view.state === 'compact' && !view.pinned) {
-    openPanel(view.lastPanel ?? 'player');
-  }
+    clearTimeout(hoverTimer);
+    if (view.snapshot?.capturing) return;
+    if (view.hoverToExpand && view.state === 'compact' && !view.pinned) {
+        openPanel(view.lastPanel ?? 'player');
+    }
 });
 root.addEventListener('mouseleave', () => {
-  clearTimeout(hoverTimer);
-  if (view.pinned) return;
-  hoverTimer = setTimeout(() => {
-    if (view.state !== 'compact' && !view.pinned) api.action('panel.open', { state: 'compact' });
-  }, 220);
+    clearTimeout(hoverTimer);
+    // The shots drive the island from the main process; a pointer that happens to
+    // sit on the notch would fold every panel between the setState and the
+    // capture.
+    if (view.snapshot?.capturing) return;
+    if (view.pinned) return;
+    hoverTimer = setTimeout(() => {
+        if (view.state !== 'compact' && !view.pinned) api.action('panel.open', { state: 'compact' });
+    }, 220);
 });
 
 // ---------------------------------------------------------------- sliders
