@@ -550,6 +550,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .widget.dim { color: var(--muted); background: rgba(255, 255, 255, 0.05); }
 .widget.alert { color: var(--red); background: rgba(255, 69, 58, 0.18); }
 .widget.is-charging { color: var(--charge); background: rgba(255, 159, 10, 0.16); }
+/* The charging widget is the same amber-to-green walk as the panel's bar, so the
+   row and the panel read as the same thing at two sizes. */
+.widget.charge-widget { color: var(--charge); background: rgba(255, 159, 10, 0.16); transition: color 0.6s linear, background 0.6s linear; }
 
 /* An Apple accessory that just connected gets a one-off hello: the icon ripples
    outward once, the way a device acknowledges a pairing. */
@@ -800,6 +803,21 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 }
 .layout-item .label { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
 .layout-item .icon { flex: none; }
+/* The size badge: what a tap on the item would change. */
+.layout-size {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.8);
+}
+.layout-item.sizeable { cursor: grab; padding-right: 4px; }
 .layout-dot {
   width: 6px;
   height: 6px;

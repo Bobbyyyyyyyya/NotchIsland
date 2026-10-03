@@ -300,6 +300,32 @@ const SHOTS = [
     },
   },
   {
+    // The charger as a row item, half filled: the amber it starts in, on its way to
+    // the green a full battery snaps to.
+    name: 'compact-charging-item',
+    prepare: () => {
+      prefs.load().layout = layout.normalise({
+        ...prefs.get('layout'),
+        compact: ['media', 'battery', 'charging', 'volume', 'clock', 'cpu'],
+      });
+      state.battery = { ...state.battery, charging: true, level: 0.62, full: false };
+      return 'compact';
+    },
+  },
+  {
+    // The same song small: the glyph on its own, no sleeve, for a crowded row.
+    name: 'compact-media-small',
+    prepare: () => {
+      prefs.load().layout = layout.normalise({
+        ...prefs.get('layout'),
+        compact: ['media', 'volume', 'battery', 'cpu'],
+      });
+      prefs.load().layout.sizes.media = 'small';
+      state.media = { ...STAGED_MEDIA, rate: 0, artwork: COVER };
+      return 'compact';
+    },
+  },
+  {
     name: 'compact-timer',
     prepare: () => { activities.startTimer(25); return 'compact'; },
   },
@@ -512,6 +538,7 @@ async function captureReference () {
   const input = state.input;
   const airdrop = state.airdrop;
   const update = state.update;
+  const stagedLayout = prefs.get('layout');
 
   for (const shot of SHOTS) {
     // An activity opening on its own would hijack the capture, and a transfer
@@ -529,6 +556,7 @@ async function captureReference () {
     state.input = input;
     state.airdrop = airdrop;
     state.update = update;
+    prefs.load().layout = stagedLayout;
     dismissed.delete('update');
     // A staged shot may return the state it needs, since a transfer only exists
     // under an id the module just made up.
@@ -611,6 +639,7 @@ async function captureReference () {
   }
   state.battery = battery;
   state.update = update;
+  prefs.load().layout = stagedLayout;
   dismissed.delete('update');
   capturing = false;
   console.log(`screenshots written to ${target}`);
@@ -1047,6 +1076,20 @@ function kindOf (text) {
   return 'text';
 }
 
+/**
+ * The size every item that can be more than one size is drawn at, resolved against
+ * the items this version knows. An item with no choice is simply not in here.
+ */
+function sizesOf (current) {
+  const clean = layout.normalise(current);
+  const out = {};
+  for (const item of layout.itemsOf('compact')) {
+    const size = layout.sizeOf(clean, 'compact', item.id);
+    if (size) out[item.id] = size;
+  }
+  return out;
+}
+
 function snapshot () {
   const profiles = prefs.layoutProfiles();
   return copyState({
@@ -1067,6 +1110,9 @@ function snapshot () {
       arranged: Object.fromEntries(
         layout.surfaceNames().map((surface) => [surface, layout.arranged(prefs.get('layout'), surface)]),
       ),
+      // Resolved, so the renderer never has to know a default: whatever the
+      // arrangement says an item is drawn at is what it is told it is drawn at.
+      sizes: sizesOf(prefs.get('layout')),
       profile: profiles.active,
       profiles: Object.keys(profiles.all),
     },

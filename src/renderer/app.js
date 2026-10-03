@@ -147,11 +147,13 @@ const WIDGETS = {
       const { title, artwork, playbackState } = state.media;
       if (!title && playbackState <= 0) return null;
       const node = document.createElement('button');
-      node.className = `widget${playbackState <= 0 ? ' dim' : ''}`;
+      const size = widgetSize('media');
+      node.className = `widget${playbackState <= 0 ? ' dim' : ''}${size === 'small' ? ' small' : ''}`;
       node.dataset.panelOpen = 'player';
-      // Album art inside a ring of playback progress: one round thing, no
-      // label — the island names the song by its cover.
-      if (artwork) {
+      // Big: album art inside a ring of playback progress — one round thing, no
+      // label, because the island names the song by its cover. Small: the glyph on
+      // its own, for a row that has more in it than the art can spare room for.
+      if (artwork && size !== 'small') {
         const ring = document.createElement('span');
         ring.className = 'ring';
         ring.style.setProperty('--progress', String(progressOf(state.media)));
@@ -164,6 +166,32 @@ const WIDGETS = {
         node.insertAdjacentHTML('beforeend', icon('music', { size: 14 }));
       }
       node.title = title || 'Apple Music';
+      return node;
+    },
+  },
+
+  charging: {
+    label: 'Charging',
+    render (state) {
+      // The charger is the one widget that only exists while it is true: the level
+      // and the bolt, in the amber the island fills with. It is here because the
+      // arrangement says so — take it out and the island stops opening for the
+      // charger as well, so there is one switch for the whole thing.
+      const { level, charging } = state.battery;
+      if (!charging) return null;
+      const node = document.createElement('button');
+      node.className = 'widget readout charge-widget';
+      node.dataset.panelOpen = 'battery';
+      tintCharge(node, level);
+      const bolt = document.createElement('span');
+      bolt.className = 'charging';
+      bolt.innerHTML = icon(level >= 1 ? 'checkFill' : 'batteryBolt', { size: 11, filled: true });
+      node.append(bolt);
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = `${Math.round(level * 100)}%`;
+      node.append(label);
+      node.title = level >= 1 ? 'Fully charged' : `Charging · ${Math.round(level * 100)}%`;
       return node;
     },
   },
@@ -739,6 +767,15 @@ function renderWidgets (state) {
  * it has. A surface the main process has not sent yet comes back empty rather than
  * throwing, so the island is never blank while a profile is being loaded.
  */
+/**
+ * The size a widget is drawn at, which the arrangement decides for the ones that
+ * can be more than one size. Anything without a choice comes back null, so a
+ * widget cannot accidentally be shrunk.
+ */
+function widgetSize (id) {
+  return view.layout?.sizes?.[id] ?? null;
+}
+
 function surfaceArms (state, surface) {
   const arranged = state?.layout?.arranged?.[surface];
   if (Array.isArray(arranged)) return { right: arranged.filter((id) => WIDGETS[id]), left: [] };
@@ -1759,6 +1796,9 @@ function renderArranging () {
     view.layout?.profile,
     (view.layout?.profiles ?? []).join(','),
     JSON.stringify(view.layout?.arranged ?? {}),
+    // Sizes are part of what the editor is drawing: without them a resize would
+    // leave the badge showing the size it was before.
+    JSON.stringify(view.layout?.sizes ?? {}),
   ].join('|');
   if (arranging.signature === signature) return;
   arranging.signature = signature;
@@ -1874,10 +1914,18 @@ function layoutGap (side, index) {
 function layoutSlot (id) {
   const item = layoutItems().find((entry) => entry.id === id);
   const node = document.createElement('div');
-  node.className = 'layout-item';
+  const sizes = item?.sizes ?? [];
+  const size = sizes.length ? widgetSize(id) : null;
+  node.className = `layout-item${sizes.length > 1 ? ' sizeable' : ''}`;
   node.dataset.id = id;
   node.dataset.side = layoutArmOf(id);
+  if (size) node.dataset.size = size;
+  node.title = item?.note
+    ?? (sizes.length > 1
+      ? `${item.label} — tap to make it ${size === sizes[0] ? sizes[1] : sizes[0]}`
+      : item?.label ?? id);
   node.innerHTML = `${layoutGlyph(item)}<span class="label">${escapeHtml(item?.label ?? id)}</span>`
+    + (sizes.length > 1 ? `<span class="layout-size">${size === sizes[0] ? 'L' : 'S'}</span>` : '')
     + '<button class="layout-remove" title="Take it out"></button>';
   const remove = node.querySelector('.layout-remove');
   remove.innerHTML = icon('close', { size: 11 });
@@ -1886,6 +1934,20 @@ function layoutSlot (id) {
     api.action('layout.set', { change: { op: 'remove', surface: arranging.surface, id } });
   });
   return node;
+}
+
+/**
+ * Steps an item through its sizes. A tap is the right gesture for this because a
+ * drag is what moves the item, and the two cannot be confused: nothing is
+ * rearranged until the pointer has actually travelled.
+ */
+function cycleWidgetSize (id) {
+  const sizes = layoutItems().find((entry) => entry.id === id)?.sizes ?? [];
+  // Only something the row already carries has a size to change; a tap on the
+  // palette is a press with nothing behind it, and does nothing at all.
+  if (sizes.length < 2 || !layoutOrder().includes(id)) return;
+  const at = Math.max(0, sizes.indexOf(widgetSize(id)));
+  api.action('layout.set', { change: { surface: arranging.surface, id, op: 'size', size: sizes[(at + 1) % sizes.length] } });
 }
 
 function layoutGlyph (item) {
@@ -1958,7 +2020,12 @@ function bindArrangeDrag () {
     root.classList.remove('arranging');
     el('arrangeGhost').hidden = true;
     for (const node of root.querySelectorAll('.layout-gap.over')) node.classList.remove('over');
-    if (!live) return;
+    if (!live) {
+      // A press that never travelled is a tap, and on an item that can be more
+      // than one size that is what it means.
+      cycleWidgetSize(item.dataset.id);
+      return;
+    }
     const target = layoutGapUnder(event.clientX, event.clientY);
     if (target) dropArranged(item.dataset.id, target);
   };

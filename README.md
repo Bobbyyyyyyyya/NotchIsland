@@ -11,11 +11,12 @@ all in the notch, with F7–F12 working the way they do on Apple hardware.
 
 | Widget | Shows |
 | --- | --- |
-| Music | artwork and progress while something is playing |
+| Music | artwork and progress while something is playing, big or small |
 | Bluetooth | battery of connected AirPods, Magic Mouse, Keyboard or Trackpad, and the name of whatever just connected |
 | Volume | level, or `Mute` when muted |
 | Mic | `Live` while an app is recording, `Off` when muted |
 | Battery | percentage, a bolt while charging, red below 20 % |
+| Charging | the charger, with the level walking amber to green — take it out and the island stops opening for it too |
 | Meeting | red pulse while a microphone is in use |
 | Clipboard | the snippet you just copied |
 | Clock | the time; clicking it opens the island on a large clock with seconds |
@@ -25,8 +26,13 @@ all in the notch, with F7–F12 working the way they do on Apple hardware.
 Every widget in that row is yours to move, add or remove: the row is drawn as two
 arms either side of the housing and dragged into place from the Arrange panel
 (`⌘⌥L`), along with the quick controls and the order of the Settings sections. A
-profile is a whole set of those at once, so "office" and "evening" are one click
-apart in the tray.
+widget that can be more than one size — music is — says so with a badge, and a tap
+steps it through. A profile is a whole set of those at once, so "office" and
+"evening" are one click apart in the tray.
+
+The charger is in that list too, which is the only way to turn it off: take
+*Charging* out and the island stops opening for the plug, stops breathing at the
+edge, and the row loses the level walking amber to green.
 
 The island grows with the number of widgets, up to 560 pt; only when even that
 is not enough are widgets dropped from the outside in, the way the real island
@@ -115,8 +121,9 @@ open island folds it back to the pill, the same as dragging it down or tapping i
 - **Settings** — shape, hover behaviour, media-key claim, update checks, live
   hotkey status and system facts.
 - **Arrange** — the editor: what is in the island row, which side of the housing it
-  sits on, what a long press reaches for, the order of the Settings sections, and
-  the profiles these are arranged into.
+  sits on, how big a widget is drawn, whether the charger says anything at all, what
+  a long press reaches for, the order of the Settings sections, and the profiles
+  these are arranged into.
 
 The panel that opens for an activity has its own controls: pause and cancel for
 a timer, disconnect for an accessory, open the microphone or the player for the

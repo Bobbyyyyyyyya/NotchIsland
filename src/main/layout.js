@@ -28,11 +28,19 @@ const SURFACES = {
     label: 'Island row',
     sides: true,
     items: [
-      { id: 'media', label: 'Music', icon: 'music' },
+      { id: 'media', label: 'Music', icon: 'music', sizes: ['big', 'small'] },
       { id: 'bluetooth', label: 'Bluetooth', icon: 'bluetooth' },
       { id: 'volume', label: 'Volume', icon: 'volumeHigh' },
       { id: 'mic', label: 'Microphone', icon: 'mic' },
       { id: 'battery', label: 'Battery', icon: 'battery' },
+      {
+        id: 'charging',
+        label: 'Charging',
+        icon: 'batteryBolt',
+        // Not really a widget: the charger is an event, so what this decides is
+        // whether the island says anything about it at all.
+        note: 'the island opening for the charger, and the ring that fills beside it',
+      },
       { id: 'meeting', label: 'Meeting', icon: 'mic' },
       { id: 'clipboard', label: 'Clipboard', icon: 'clipboard' },
       { id: 'clock', label: 'Clock', icon: 'clock' },
@@ -65,13 +73,15 @@ const SURFACES = {
   },
 };
 
+/** How big each compact item starts, where it can be drawn at more than one size. */
+const DEFAULT_SIZES = { media: 'big' };
+
 /**
  * Which arm each compact item starts on.
  *
- * This is where the counting split used to land: ten widgets, so the first five
- * sat to the right of the housing and the rest to its left. A fresh install has
- * to come out looking exactly like the app before any of this, so `battery` is on
- * the right here for the same reason it was fifth in the list.
+ * This is where the counting split used to land: the widgets before `meeting` sat
+ * to the right of the housing and the rest to its left, which is why `battery` is
+ * on the right here and `charging` — which arrives in between them — is too.
  */
 const DEFAULT_SIDES = {
   media: 'right',
@@ -79,6 +89,7 @@ const DEFAULT_SIDES = {
   volume: 'right',
   mic: 'right',
   battery: 'right',
+  charging: 'right',
   meeting: 'left',
   clipboard: 'left',
   clock: 'left',
@@ -94,7 +105,7 @@ const DEFAULT_SIDES = {
  */
 const DEFAULT_LAYOUT = {
   compact: [
-    'media', 'bluetooth', 'volume', 'mic', 'battery', 'meeting', 'clipboard', 'clock', 'airdrop', 'cpu',
+    'media', 'bluetooth', 'volume', 'mic', 'battery', 'charging', 'meeting', 'clipboard', 'clock', 'airdrop', 'cpu',
   ],
   quick: ['volume', 'mic', 'bluetooth', 'player', 'clipboard', 'settings', 'timer'],
   settings: ['appearance', 'hotkeys', 'updates', 'system'],
@@ -105,10 +116,12 @@ const DEFAULT_LAYOUT = {
  * rather than never seeing it. The version is what a profile carries, not the
  * preferences file, since each profile is arranged on its own.
  */
-const LAYOUT_VERSION = 1;
+const LAYOUT_VERSION = 2;
 
 /** Items added after version 1, in the order they should land at the end. */
-const ADDED_IN = {};
+const ADDED_IN = {
+  2: { compact: ['charging'] },
+};
 
 function surfaceNames () {
   return Object.keys(SURFACES);
@@ -125,6 +138,18 @@ function itemDef (surface, id) {
 function sideOf (surface, id) {
   if (!SURFACES[surface]?.sides) return null;
   return DEFAULT_SIDES[id] ?? 'right';
+}
+
+/** The sizes an item can be drawn at, largest first. */
+function sizesOf (surface, id) {
+  return itemDef(surface, id)?.sizes ?? [];
+}
+
+function sizeOf (layout, surface, id) {
+  const sizes = sizesOf(surface, id);
+  if (!sizes.length) return null;
+  const wanted = normalise(layout).sizes[id];
+  return sizes.includes(wanted) ? wanted : sizes[0];
 }
 
 /**
@@ -169,7 +194,7 @@ function upgradeSurface (surface, ids, version) {
 function normalise (layout) {
   const source = layout ?? {};
   const version = Number(source.version ?? 0);
-  const out = { version: LAYOUT_VERSION, sides: {} };
+  const out = { version: LAYOUT_VERSION, sides: {}, sizes: {} };
   for (const surface of surfaceNames()) {
     out[surface] = upgradeSurface(surface, source[surface], version);
   }
@@ -179,6 +204,13 @@ function normalise (layout) {
   for (const [id, side] of Object.entries(source.sides ?? {})) {
     if (side !== 'left' && side !== 'right') continue;
     out.sides[id] = side;
+  }
+  // Sizes are per item and per surface, so an item that cannot be drawn at that
+  // size any more loses the setting rather than keeping a word nobody can read.
+  for (const surface of surfaceNames()) {
+    for (const [id, size] of Object.entries(source.sizes ?? {})) {
+      if (sizesOf(surface, id).includes(size)) out.sizes[id] = size;
+    }
   }
   return out;
 }
@@ -268,6 +300,12 @@ function change (current, edit = {}) {
   const surface = edit.surface;
   if (!surface || !itemsOf(surface).length) return clean;
   if (edit.op === 'remove') return remove(clean, surface, edit.id);
+  if (edit.op === 'size') {
+    const sizes = sizesOf(surface, edit.id);
+    const next = sizes.includes(edit.size) ? edit.size : sizes[0];
+    if (!next) return clean;
+    return { ...clean, sizes: { ...clean.sizes, [edit.id]: next } };
+  }
 
   const order = arranged(clean, surface);
   if (Array.isArray(order)) {
@@ -355,12 +393,15 @@ module.exports = {
   SURFACES,
   DEFAULT_LAYOUT,
   DEFAULT_SIDES,
+  DEFAULT_SIZES,
   DEFAULT_PROFILE,
   LAYOUT_VERSION,
   surfaceNames,
   itemsOf,
   itemDef,
   sideOf,
+  sizesOf,
+  sizeOf,
   normalise,
   normaliseSurface,
   available,

@@ -3,32 +3,66 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const layout = require('../src/main/layout');
+const activities = require('../src/main/activities');
 
 const ALL_COMPACT = layout.DEFAULT_LAYOUT.compact;
+
+/** A quiet machine, so the charger is the only thing that could happen. */
+const base = {
+  media: { title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0 },
+  input: { muted: false, active: [] },
+  battery: { level: 0.5, charging: true },
+  bluetooth: { devices: [] },
+};
 
 test('a fresh arrangement is the one the island shipped with', () => {
   const clean = layout.normalise(null);
   assert.deepStrictEqual(clean.compact, ALL_COMPACT);
   assert.deepStrictEqual(clean.quick, layout.DEFAULT_LAYOUT.quick);
   assert.deepStrictEqual(clean.settings, layout.DEFAULT_LAYOUT.settings);
-  // The arms are where the counting used to put them: ten widgets, first five
-  // right of the housing, the rest left.
+  // The arms are where the counting used to put them: everything up to the
+  // charger on the right of the housing, the rest on the left.
   assert.deepStrictEqual(layout.arranged(clean, 'compact'), {
-    right: ['media', 'bluetooth', 'volume', 'mic', 'battery'],
+    right: ['media', 'bluetooth', 'volume', 'mic', 'battery', 'charging'],
     left: ['meeting', 'clipboard', 'clock', 'airdrop', 'cpu'],
   });
 });
 
 test('a surface that was never stored falls back, an emptied one does not', () => {
-  const clean = layout.normalise({ compact: [], settings: [], version: 1 });
+  const clean = layout.normalise({ compact: [], settings: [], version: layout.LAYOUT_VERSION });
   assert.deepStrictEqual(clean.compact, [], 'removing everything has to stay removed');
   assert.deepStrictEqual(clean.settings, []);
   assert.deepStrictEqual(clean.quick, layout.DEFAULT_LAYOUT.quick, 'this one was never touched');
 });
 
+test('an item added in a later version reaches a layout that predates it', () => {
+  // The charger became an item in version 2, so a row arranged before that has to
+  // gain it — otherwise the one thing the island always showed would be the one
+  // thing that quietly disappeared on upgrade.
+  const old = { compact: ['media', 'battery'], version: 1 };
+  assert.deepStrictEqual(layout.normalise(old).compact, ['media', 'battery', 'charging']);
+  // And a layout arranged since is left exactly as its owner left it, including
+  // one they emptied themselves.
+  assert.deepStrictEqual(
+    layout.normalise({ ...old, version: layout.LAYOUT_VERSION }).compact,
+    ['media', 'battery'],
+  );
+  assert.deepStrictEqual(layout.normalise({ compact: [], version: layout.LAYOUT_VERSION }).compact, []);
+});
+
 test('unknown ids and duplicates are dropped', () => {
   const clean = layout.normalise({ compact: ['clock', 'clock', 'nonsense', 'cpu'] });
-  assert.deepStrictEqual(clean.compact, ['clock', 'cpu']);
+  // `charging` was added in version 2, so an older layout still gains it: the
+  // charger must not be the thing that silently disappears on upgrade.
+  assert.deepStrictEqual(clean.compact, ['clock', 'cpu', 'charging']);
+});
+
+test('the charger is an item, so it can be taken out', () => {
+  const without = layout.remove(layout.normalise(null), 'compact', 'charging');
+  assert.deepStrictEqual(layout.arranged(without, 'compact'), {
+    right: ['media', 'bluetooth', 'volume', 'mic', 'battery'],
+    left: ['meeting', 'clipboard', 'clock', 'airdrop', 'cpu'],
+  });
 });
 
 test('a stale side does not survive', () => {
@@ -106,6 +140,56 @@ test('an empty arm is a place, not a missing one', () => {
   const arms = layout.arranged(allLeft, 'compact');
   assert.deepStrictEqual(arms.right, []);
   assert.strictEqual(arms.left.length, ALL_COMPACT.length);
+});
+
+test('a layout from before the charger existed gains it, and keeps it on disk', () => {
+  // This is what the migration in prefs.js does: the old widget list becomes an
+  // arrangement dated from before `charging` was an item, which then brings it up
+  // to date. Claiming to be current instead would leave an upgrading user without
+  // the one thing the island had always shown.
+  const migrated = layout.normalise({
+    compact: ['media', 'battery', 'clipboard'],
+    quick: layout.DEFAULT_LAYOUT.quick,
+    settings: layout.DEFAULT_LAYOUT.settings,
+    version: 1,
+  });
+  assert.deepStrictEqual(layout.arranged(migrated, 'compact'), {
+    right: ['media', 'battery', 'charging'],
+    left: ['clipboard'],
+  });
+  assert.strictEqual(layout.normalise(migrated).compact.includes('charging'), true, 'and it is idempotent');
+});
+
+test('a widget can be more than one size, and the size is stored', () => {
+  const big = layout.normalise(null);
+  assert.strictEqual(layout.sizeOf(big, 'compact', 'media'), 'big');
+  const small = layout.change(big, { surface: 'compact', id: 'media', op: 'size', size: 'small' });
+  assert.strictEqual(layout.sizeOf(small, 'compact', 'media'), 'small');
+  // Moving it does not resize it: two independent choices.
+  const moved = layout.change(small, { surface: 'compact', id: 'media', arm: 'left', index: 0 });
+  assert.strictEqual(layout.sizeOf(moved, 'compact', 'media'), 'small');
+});
+
+test('an item that cannot be resized says so instead of inventing one', () => {
+  const clean = layout.normalise(null);
+  assert.strictEqual(layout.sizeOf(clean, 'compact', 'volume'), null);
+  assert.deepStrictEqual(layout.sizesOf('compact', 'volume'), []);
+  const resized = layout.change(clean, { surface: 'compact', id: 'volume', op: 'size', size: 'small' });
+  assert.deepStrictEqual(resized.sizes, {}, 'a size nothing can be drawn at is not stored');
+});
+
+test('a size a later version cannot draw is dropped', () => {
+  const clean = layout.normalise({ sizes: { media: 'gigantic', volume: 'small' } });
+  assert.deepStrictEqual(clean.sizes, {});
+});
+
+test('the charger is an item, so the island can stop saying anything about it', () => {
+  // The main process only keeps the charge activity while the row carries it.
+  assert.ok(activities.derive({ ...base, battery: { level: 0.5, charging: true } }).some((a) => a.kind === 'battery'));
+  const carried = { layout: { arranged: { compact: { right: ['charging'], left: [] } } } };
+  assert.ok(activities.derive({ ...base, ...carried }).some((a) => a.kind === 'battery'));
+  const removed = { layout: { arranged: { compact: { right: [], left: [] } } } };
+  assert.strictEqual(activities.derive({ ...base, ...removed }).some((a) => a.kind === 'battery'), false);
 });
 
 test('the palette knows what a surface is not carrying', () => {

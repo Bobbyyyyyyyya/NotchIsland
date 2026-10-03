@@ -85,7 +85,13 @@ function migrate (prefs) {
   prefs.layout = {
     ...layout.normalise(null),
     compact: layout.normaliseSurface('compact', stored),
+    // The arrangement is exactly the old widget list, so it starts out dating from
+    // before the charger became an item. Normalising straight away then brings it
+    // up to date, which is what puts the charger back and leaves the file holding
+    // the real arrangement rather than a claim about one.
+    version: 1,
   };
+  prefs.layout = layout.normalise(prefs.layout);
   prefs.version = 2;
   delete prefs.widgets;
   return true;

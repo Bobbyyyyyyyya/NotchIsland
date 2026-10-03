@@ -283,18 +283,40 @@ if (media.title && media.rate > 0) {
   // Charging is the one activity that retires itself: once the battery is full
   // the bar snaps green, holds for a moment so that reads as "done", and then the
   // island has nothing left to show and folds away.
+  //
+  // It is also the one activity the arrangement decides about, because the charger
+  // is the one thing the island cannot be talked out of: taking the charging item
+  // out of the row means the island stops opening for it and stops breathing at
+  // the edge, which is the only way to turn it off.
   const battery = state.battery;
-  if (battery?.charging && battery.level < 1) {
-    chargeFullAt = 0;
-    activities.push(chargingActivity(battery));
-  } else if (battery?.charging && battery.level >= 1) {
-    if (!chargeFullAt) chargeFullAt = now;
-    if (now - chargeFullAt < CHARGE_FULL_HOLD_MS) activities.push(chargingActivity(battery, true));
+  if (arranged(state, 'charging')) {
+    if (battery?.charging && battery.level < 1) {
+      chargeFullAt = 0;
+      activities.push(chargingActivity(battery));
+    } else if (battery?.charging && battery.level >= 1) {
+      if (!chargeFullAt) chargeFullAt = now;
+      if (now - chargeFullAt < CHARGE_FULL_HOLD_MS) activities.push(chargingActivity(battery, true));
+    } else {
+      chargeFullAt = 0;
+    }
   } else {
     chargeFullAt = 0;
   }
 
   return activities;
+}
+
+/**
+ * Whether an item is in the island row.
+ *
+ * An arrangement that has not arrived yet — a snapshot from before the layout
+ * existed — counts as everything being in use, so the charger is never the thing
+ * that silently disappears.
+ */
+function arranged (state, id) {
+  const row = state.layout?.arranged?.compact;
+  if (!row) return true;
+  return Array.isArray(row) ? row.includes(id) : [...(row.right ?? []), ...(row.left ?? [])].includes(id);
 }
 
 function chargingActivity (battery, full = false) {
@@ -338,6 +360,7 @@ module.exports = {
   formatBytes,
   formatCountdown,
   updateActivity,
+  arranged,
   CHARGE_FULL_HOLD_MS,
   TRANSFER_DONE_HOLD_MS,
 };
