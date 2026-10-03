@@ -13,6 +13,8 @@ const el = (id) => document.getElementById(id);
 const root = el('island');
 
 const PANEL_WIDTH = 420;
+/** The arranging panel holds a palette and two arms, so it is given more room. */
+const LAYOUT_WIDTH = 540;
 
 const view = {
   state: 'compact',
@@ -21,7 +23,8 @@ const view = {
   maxWidth: 440,
   style: 'pill',
   hoverToExpand: true,
-  widgets: [],
+  layout: null,
+  surface: { right: [], left: [] },
   pinned: false,
   lastPanel: 'player',
   snapshot: null,
@@ -594,7 +597,10 @@ function bindSwipe (node, activity) {
 
 /** Bounces the widgets whose headline value changed since the last render. */
 function popChangedWidgets (nodes, state) {
-  const ids = state.prefs.widgets;
+  // Whatever is in the row, in the arrangement's order: a widget bounces when its
+  // own number moves, and the comparison has to line the two pushes up.
+  const arms = surfaceArms(state, 'compact');
+  const ids = [...arms.right, ...arms.left];
   const values = ids.map((id) => {
     if (id === 'media') return state.media.title;
     if (id === 'clipboard') return state.clipboard.items[0]?.text ?? '';
@@ -635,8 +641,6 @@ function nudge () {
   nudgeTimer = setTimeout(() => root.classList.remove('nudge'), 460);
 }
 
-const WIDGET_ORDER = ['media', 'bluetooth', 'volume', 'mic', 'battery', 'meeting', 'clipboard', 'clock', 'airdrop', 'cpu'];
-
 function kindIcon (kind) {
   return { link: 'link', email: 'text', code: 'text' }[kind] ?? 'clipboard';
 }
@@ -653,7 +657,8 @@ function render (snapshot) {
   view.maxWidth = snapshot.prefs.island.maxWidth;
   view.style = snapshot.prefs.island.style;
   view.hoverToExpand = snapshot.prefs.island.hoverToExpand;
-  view.widgets = snapshot.prefs.widgets;
+  view.layout = snapshot.layout ?? null;
+  view.surface = snapshot.layout?.arranged?.compact ?? { right: [], left: [] };
   view.notch = snapshot.geometry.notch;
   syncPanelWidth();
 
@@ -664,31 +669,46 @@ function render (snapshot) {
   renderBluetooth(snapshot);
   renderClipboard(snapshot);
   renderSettings(snapshot);
+  renderArranging();
   syncPanels();
   requestSize();
 }
 
 /**
- * Fills both arms. Live activities take the housing over; when there are none the
- * widgets come back. Everything hugs the notch: the first half sits to its right,
- * the rest to its left, so the island reads as one pill with the camera cut into
- * its middle. Nodes are reused between renders so the meters and the transfer
- * dots keep animating.
+ * Fills both arms.
+ *
+ * Which arm a widget sits on, and in what order, is no longer a guess: the layout
+ * says so, and the layout editor is where that is decided. What happens in a row
+ * when it does not fit is still decided here — `requestSize` sheds from whichever
+ * arm is widest, so a crowded island loses the detail it can spare.
+ *
+ * Live activities sit on the right arm in front of the widgets rather than being
+ * counted into the row: an event must never be dropped because of an arrangement,
+ * and putting it where the counting used to put it would move every widget in the
+ * island one place along whenever something happened.
+ *
+ * Nodes are reused between renders so the meters and the transfer dots keep
+ * animating.
  */
 function renderWidgets (state) {
-  const wanted = state.prefs.widgets.filter((id) => WIDGETS[id]);
-  const signature = wanted.join(',');
+  const arms = surfaceArms(state, 'compact');
+  const row = [...arms.right, ...arms.left];
+  const signature = row.join(',');
   if (signature !== view.widgetSignature) {
     view.widgetSignature = signature;
     view.widgetNodes.clear();
   }
 
-  const widgets = [];
   // The update pill is not a preference: it is the same status light the update
   // bubble is, for the moment there is no bubble because the island is not open.
-  const row = hasSomethingToAnnounce(state.update) ? ['update', ...wanted] : wanted;
-  for (const id of row) {
-    const fresh = WIDGETS[id].render(state);
+  // It rides in front of the right arm and is not part of the arrangement.
+  const withStatus = [...arms.right, ...(hasSomethingToAnnounce(state.update) ? ['update'] : [])];
+
+  const built = {};
+  for (const id of [...withStatus, ...arms.left]) {
+    const widget = WIDGETS[id];
+    if (!widget) continue;
+    const fresh = widget.render(state);
     if (!fresh) {
       view.widgetNodes.delete(id);
       continue;
@@ -697,29 +717,41 @@ function renderWidgets (state) {
     if (previous) previous.replaceWith(fresh);
     fresh.dataset.widget = id;
     view.widgetNodes.set(id, fresh);
-    widgets.push(fresh);
+    built[id] = fresh;
   }
   for (const id of [...view.widgetNodes.keys()]) {
-    if (!row.includes(id)) view.widgetNodes.delete(id);
+    if (!built[id]) view.widgetNodes.delete(id);
   }
 
-  // An event sits beside the widgets instead of taking the row over, so a phone
-  // charging in the corner does not clear the clock and the player out of the
-  // island. `requestSize` sheds widgets from the widest arm until both fit, and
-  // never sheds a bubble — so the charging ring stays even in a crowded row.
   const bubbles = renderBubbles(state);
-  const rendered = [...bubbles, ...widgets];
   root.classList.toggle('bubbles', bubbles.length > 0);
   view.bubbleCount = bubbles.length;
 
-  // The odd one out goes to the left, so an odd number of bubbles does not tip
-  // the whole row towards one side of the housing.
-  const split = Math.floor(rendered.length / 2);
-  el('armLeft').replaceChildren(...rendered.slice(split));
-  el('armRight').replaceChildren(...rendered.slice(0, split));
+  el('armRight').replaceChildren(...bubbles, ...withStatus.map((id) => built[id]).filter(Boolean));
+  el('armLeft').replaceChildren(...arms.left.map((id) => built[id]).filter(Boolean));
   // A bubble must not bounce because the volume changed.
-  popChangedWidgets(widgets, state);
+  popChangedWidgets(Object.values(built), state);
   requestSize();
+}
+
+/**
+ * One surface as the renderer needs it: the widgets it names, split into the arms
+ * it has. A surface the main process has not sent yet comes back empty rather than
+ * throwing, so the island is never blank while a profile is being loaded.
+ */
+function surfaceArms (state, surface) {
+  const arranged = state?.layout?.arranged?.[surface];
+  if (Array.isArray(arranged)) return { right: arranged.filter((id) => WIDGETS[id]), left: [] };
+  return {
+    right: (arranged?.right ?? []).filter((id) => WIDGETS[id]),
+    left: (arranged?.left ?? []).filter((id) => WIDGETS[id]),
+  };
+}
+
+/** A surface as a plain list, for the panels that are one. */
+function surfaceList (state, surface) {
+  const arranged = state?.layout?.arranged?.[surface];
+  return Array.isArray(arranged) ? [...arranged] : [];
 }
 
 function renderPlayer (state) {
@@ -890,18 +922,9 @@ function renderSettings (state) {
   el('mediaKeysToggle').checked = prefs.hotkeys.mediaKeys === true;
   el('loginToggle').checked = prefs.launchAtLogin === true;
 
-  const toggles = el('widgetToggles');
-  toggles.replaceChildren(...WIDGET_ORDER.map((id) => {
-    const button = document.createElement('button');
-    const on = prefs.widgets.includes(id);
-    button.className = `widget-toggle${on ? ' on' : ''}`;
-    button.textContent = WIDGETS[id].label;
-    button.addEventListener('click', () => {
-      const next = on ? prefs.widgets.filter((widget) => widget !== id) : [...prefs.widgets, id];
-      api.action('prefs.set', { patch: { widgets: next } });
-    });
-    return button;
-  }));
+  // Which widgets are in the row, and where, is the layout's business now; this
+  // panel only decides in which order its own sections read.
+  arrangeSettingsSections(state);
 
   const hotkeys = el('hotkeyList');
   hotkeys.replaceChildren(...Object.entries(state.hotkeys).map(([, info]) => {
@@ -921,6 +944,34 @@ function renderSettings (state) {
   el('retryHelper').hidden = state.helper.available;
 
   renderUpdates(state);
+  arrangeSettingsSections(state);
+}
+
+/** The settings blocks, kept so one left out of the arrangement can come back. */
+let settingsBlocks = null;
+
+/**
+ * The settings sections in the order the layout says, and only those.
+ *
+ * The blocks are moved rather than rebuilt, so a checkbox inside one of them does
+ * not lose whatever it was doing halfway through a click. They are also collected
+ * once and remembered: a section the arrangement leaves out is detached, and
+ * looking for it again would find nothing — so taking a section out of Settings
+ * would be a way to delete it for good.
+ */
+function arrangeSettingsSections (state) {
+  const scroll = el('settingsScroll');
+  const wanted = surfaceList(state, 'settings');
+  const signature = wanted.join(',');
+  if (scroll.dataset.arrangement === signature) return;
+  scroll.dataset.arrangement = signature;
+  if (!settingsBlocks) {
+    settingsBlocks = new Map();
+    for (const block of scroll.querySelectorAll('.settings-block')) {
+      settingsBlocks.set(block.dataset.section, block);
+    }
+  }
+  scroll.replaceChildren(...wanted.map((id) => settingsBlocks.get(id)).filter(Boolean));
 }
 
 /**
@@ -1212,15 +1263,89 @@ function quickButton (label, iconName, onClick) {
 }
 
 /** Long press opens this: the controls you reach for most. */
+/**
+ * What each quick control says. The order they appear in is the layout's, and the
+ * ones it does not name are not drawn at all — so a control can be taken off the
+ * long press without losing it.
+ */
+/** The panel each quick control opens; the timer starts five minutes instead. */
+const QUICK_PANELS = {
+  volume: 'volume',
+  mic: 'mic',
+  bluetooth: 'bluetooth',
+  player: 'player',
+  clipboard: 'clipboard',
+  settings: 'settings',
+};
+
+const QUICK_CAPTIONS = {
+  volume (state) {
+    const output = (state.devices.list ?? []).find((device) => device.isDefault && !device.input);
+    return { glyph: icon('volumeLow', { size: 17 }), caption: output?.name ?? 'Sound' };
+  },
+  mic (state) {
+    return { glyph: icon(state.input.muted ? 'micOff' : 'mic', { size: 17 }), caption: state.input.muted ? 'Mic off' : 'Mic on' };
+  },
+  bluetooth (state) {
+    const accessory = (state.bluetooth?.devices ?? []).find((device) => device.connected && device.battery >= 0);
+    return { glyph: icon('bluetooth', { size: 17 }), caption: accessory?.name ?? 'Bluetooth' };
+  },
+  player (state) {
+    return { glyph: icon('music', { size: 17 }), caption: state.media.title ?? 'Player' };
+  },
+  clipboard () {
+    return { glyph: icon('clipboard', { size: 17 }), caption: 'Clipboard' };
+  },
+  settings () {
+    return { glyph: icon('gear', { size: 17 }), caption: 'Settings' };
+  },
+};
+
+/** The timer control counts down whatever is running, and offers to start one. */
+function timerCaption (running) {
+  const countdown = running[0]?.subtitle;
+  return `${icon('timer', { size: 17 })}<span class="caption">${escapeHtml(countdown ?? 'Timer')}</span>`;
+}
+
 function renderQuick (state) {
-  const output = (state.devices.list ?? []).find((device) => device.isDefault && !device.input);
-  const accessory = (state.bluetooth?.devices ?? []).find((device) => device.connected && device.battery >= 0);
-  el('quickOutput').innerHTML = `${icon('volumeLow', { size: 17 })}<span class="caption">${escapeHtml(output?.name ?? 'Sound')}</span>`;
-  el('quickMic').innerHTML = `${icon(state.input.muted ? 'micOff' : 'mic', { size: 17 })}<span class="caption">${state.input.muted ? 'Mic off' : 'Mic on'}</span>`;
-  el('quickBluetooth').innerHTML = `${icon('bluetooth', { size: 17})}<span class="caption">${accessory ? escapeHtml(accessory.name) : 'Bluetooth'}</span>`;
-  el('quickPlayer').innerHTML = `${icon('music', { size: 17 })}<span class="caption">${state.media.title ? escapeHtml(state.media.title) : 'Player'}</span>`;
-  el('quickClipboard').innerHTML = `${icon('clipboard', { size: 17 })}<span class="caption">Clipboard</span>`;
-  el('quickSettings').innerHTML = `${icon('gear', { size: 17 })}<span class="caption">Settings</span>`;
+  // The grid is filled in the order the layout names, and a control it does not
+  // name disappears: this is the surface for what a long press reaches for.
+  const wanted = surfaceList(state, 'quick');
+  const rows = el('quickRows');
+  if (rows.dataset.arrangement !== wanted.join(',')) {
+    rows.dataset.arrangement = wanted.join(',');
+    rows.replaceChildren();
+    // The grid is rows of three; the last one may be short, which is what makes an
+    // arrangement of seven look the way it does today.
+    for (let at = 0; at < wanted.length; at += 3) {
+      const row = document.createElement('div');
+      row.className = 'quick';
+      for (const id of wanted.slice(at, at + 3)) {
+        const button = document.createElement('button');
+        button.className = 'quick-item';
+        button.dataset.quick = id;
+        const panel = QUICK_PANELS[id];
+        if (panel) {
+          button.dataset.panelOpen = panel;
+        } else {
+          // No panel to open, so the control does the one thing it is for.
+          button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            api.action('timer.start', { minutes: 5 });
+          });
+        }
+        row.append(button);
+      }
+      rows.append(row);
+    }
+  }
+  for (const id of wanted) {
+    const say = QUICK_CAPTIONS[id]?.(state);
+    if (!say) continue;
+    for (const button of rows.querySelectorAll(`[data-quick="${id}"]`)) {
+      button.innerHTML = `${say.glyph}<span class="caption">${escapeHtml(say.caption)}</span>`;
+    }
+  }
 
   const timers = el('quickTimers');
   if (!timers.dataset.ready) {
@@ -1235,9 +1360,9 @@ function renderQuick (state) {
   }
 
   const running = (state.activities ?? []).filter((activity) => activity.id.startsWith('timer-'));
-  el('quickTimer').innerHTML = running.length
-    ? `${icon('timer', { size: 17 })}<span class="caption">${escapeHtml(running[0].subtitle)}</span>`
-    : `${icon('timer', { size: 17 })}<span class="caption">Timer</span>`;
+  for (const button of rows.querySelectorAll('[data-quick="timer"]')) {
+    button.innerHTML = timerCaption(running);
+  }
   el('quickActive').replaceChildren(...running.map((activity) => {
     const row = document.createElement('div');
     row.className = 'quick-active-row';
@@ -1367,7 +1492,10 @@ function expandedWidth () {
   const { width, detected } = view.notch ?? { width: 0, detected: false };
   const maximum = Math.max(view.maxWidth, width + 24);
   const minimum = detected ? width : 200;
-  return Math.round(Math.min(Math.max(Math.min(view.maxWidth, PANEL_WIDTH), minimum), maximum));
+  // The editor is the one panel with a palette and two arms to show at once, so it
+  // asks for the room it needs — as far as the island is willing to grow.
+  const wanted = view.state === 'layout' ? LAYOUT_WIDTH : PANEL_WIDTH;
+  return Math.round(Math.min(Math.max(Math.min(view.maxWidth, wanted), minimum), maximum));
 }
 
 function syncPanelWidth () {
@@ -1468,6 +1596,9 @@ let drag = null;
 let pressTimer = null;
 root.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
+  // The editor handles its own pointers: a press in there is picking an item up,
+  // and a held one would otherwise open the quick controls over the panel.
+  if (event.target.closest('[data-panel="layout"]')) return;
   // Sliders, progress bars, bubbles and inputs keep their own behaviour: they
   // capture the pointer and a held press would fight it. A widget is different —
   // the arms are made of widgets, so excluding them too would leave the compact
@@ -1520,7 +1651,6 @@ root.addEventListener('pointercancel', endDrag);
 let suppressClick = false;
 el('playerHint')?.addEventListener('click', () => api.action('player.open', {}));
 el('islandCollapse')?.addEventListener('click', () => api.action('close', {}));
-el('quickTimer')?.addEventListener('click', () => api.action('timer.start', { minutes: 5 }));
 
 document.addEventListener('click', (event) => {
   if (event.detail === 0) return; // keyboard activation, let the buttons handle it
@@ -1542,8 +1672,13 @@ document.addEventListener('click', (event) => {
     return;
   }
 // Clicking the body of the island toggles it, like tapping the Dynamic Island.
-    if (event.target.closest('#island') && !event.target.closest('.widget')) {
-        view.pinned = view.state !== 'compact';
+// Only while it is folded, though: an open panel is already something to look at,
+// so a click inside one belongs to whatever is under it — a switch, a list row, or
+// a gap in the arrangement.
+    if (view.state === 'compact'
+        && event.target.closest('#island')
+        && !event.target.closest('.widget')) {
+        view.pinned = false;
         api.action('island.toggle', {});
     }
 });
@@ -1558,8 +1693,314 @@ document.addEventListener('change', (event) => {
 });
 
 el('retryHelper').addEventListener('click', () => api.action('helper.retry', {}));
+bindArrangeDrag();
 el('updateCheck').addEventListener('click', () => api.action('update.check', {}));
 el('updateInstall').addEventListener('click', () => api.action('update.install', {}));
+
+// ---------------------------------------------------------------- arranging
+
+/**
+ * The layout editor.
+ *
+ * Everything the island shows is now decided by an arrangement the user can see
+ * and change, and this is where they change it: the surface being arranged is
+ * drawn as it will look, and items are dragged into the gap they belong in.
+ *
+ * Dragging is done with pointers rather than HTML5 drag and drop, because the
+ * island resizes itself while a drag is in flight and the native drag image has
+ * no idea anything moved underneath. The arrangement is never edited here: every
+ * drop is a message to the main process, which owns the layout and answers with
+ * the new one, which is then drawn like everything else.
+ */
+
+/** How far a pointer has to travel before a press turns into a drag. */
+const DRAG_SLOP = 4;
+
+/** What is being arranged, and what is currently being dragged. */
+const arranging = {
+  surface: 'compact',
+  drag: null,
+  signature: '',
+};
+
+function surfaceOf (id) {
+  return view.layout?.surfaces?.[id] ?? null;
+}
+
+function layoutItems (id = arranging.surface) {
+  return surfaceOf(id)?.items ?? [];
+}
+
+/** The surface being arranged as the editor needs it: a list, or two arms. */
+function layoutOrder (id = arranging.surface) {
+  const arrangedSurface = view.layout?.arranged?.[id] ?? { right: [], left: [] };
+  return Array.isArray(arrangedSurface) ? arrangedSurface : [...(arrangedSurface.right ?? []), ...(arrangedSurface.left ?? [])];
+}
+
+function layoutArmOf (widgetId, id = arranging.surface) {
+  const surface = view.layout?.arranged?.[id];
+  if (Array.isArray(surface) || !surface) return '';
+  return (surface.left ?? []).includes(widgetId) ? 'left' : 'right';
+}
+
+/**
+ * The whole editor, from the same snapshot as everything else.
+ *
+ * It is redrawn only when the arrangement or the surface being looked at has
+ * actually changed: a state push arrives several times a second while something
+ * is going on, and rebuilding a panel nobody is looking at is work for nothing.
+ */
+function renderArranging () {
+  if (!surfaceOf(arranging.surface)) arranging.surface = Object.keys(view.layout?.surfaces ?? {})[0] ?? 'compact';
+  // The signature is what keeps a panel nobody is looking at from being rebuilt
+  // several times a second while something is going on.
+  const signature = [
+    arranging.surface,
+    view.layout?.profile,
+    (view.layout?.profiles ?? []).join(','),
+    JSON.stringify(view.layout?.arranged ?? {}),
+  ].join('|');
+  if (arranging.signature === signature) return;
+  arranging.signature = signature;
+  renderProfiles();
+  renderSurfaceTabs();
+  renderSurfaceStage();
+  renderPalette();
+}
+
+/**
+ * A profile is a whole set of surfaces, so switching one is the coarse move and
+ * the surface tabs under it are the fine ones.
+ */
+function renderProfiles () {
+  const names = view.layout?.profiles ?? [];
+  const active = view.layout?.profile;
+  const row = el('layoutProfiles');
+  row.replaceChildren(...names.map((name) => {
+    const button = document.createElement('button');
+    button.className = `chip${name === active ? ' on' : ''}`;
+    button.textContent = name;
+    button.title = name === active ? 'The arrangement in use' : `Switch to ${name}`;
+    button.addEventListener('click', () => api.action('layout.profile', { name }));
+    return button;
+  }));
+
+  const add = document.createElement('button');
+  add.className = 'chip';
+  add.textContent = 'New';
+  add.title = 'Copy this arrangement into a new profile';
+  add.addEventListener('click', () => api.action('layout.newProfile', { name: `Profile ${names.length + 1}` }));
+  row.append(add);
+
+  if (names.length > 1) {
+    const drop = document.createElement('button');
+    drop.className = 'chip';
+    drop.textContent = 'Delete';
+    drop.title = `Delete ${active}`;
+    drop.addEventListener('click', () => api.action('layout.deleteProfile', { name: active }));
+    row.append(drop);
+  }
+}
+
+function renderSurfaceTabs () {
+  el('layoutTabs').replaceChildren(...Object.entries(view.layout?.surfaces ?? {}).map(([id, surface]) => {
+    const button = document.createElement('button');
+    button.className = `chip${id === arranging.surface ? ' on' : ''}`;
+    button.textContent = surface.label;
+    button.addEventListener('click', () => {
+      arranging.surface = id;
+      renderSurfaceTabs();
+      renderSurfaceStage();
+      renderPalette();
+    });
+    return button;
+  }));
+}
+
+/**
+ * The surface as it will look. The island row really is drawn around a housing
+ * with an arm on each side, because which arm an item sits on is the whole reason
+ * the row is arranged rather than just listed. Everything else is one list, which
+ * is all the other surfaces are.
+ */
+function renderSurfaceStage () {
+  const host = el('layoutSurface');
+  host.dataset.arms = surfaceOf(arranging.surface)?.sides ? '1' : '0';
+  if (surfaceOf(arranging.surface)?.sides) {
+    const arrangedSurface = view.layout?.arranged?.[arranging.surface] ?? {};
+    host.replaceChildren(
+      layoutArm('left', arrangedSurface.left ?? []),
+      layoutHousing(),
+      layoutArm('right', arrangedSurface.right ?? []),
+    );
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'layout-list';
+  for (const id of layoutOrder()) list.append(layoutSlot(id));
+  host.replaceChildren(list);
+}
+
+/** The camera housing, drawn to scale so the arms read as arms. */
+function layoutHousing () {
+  const node = document.createElement('div');
+  node.className = 'layout-housing';
+  const notch = view.notch?.detected ? Math.round(view.notch.width) : 96;
+  node.style.width = `${clamp(notch, 60, 160)}px`;
+  return node;
+}
+
+function layoutArm (side, ids) {
+  const node = document.createElement('div');
+  node.className = 'layout-arm';
+  node.dataset.side = side;
+  // A gap at each end as well: there has to be somewhere to put an item without
+  // having to aim between two others.
+  node.append(layoutGap(side, 0));
+  for (const id of ids) node.append(layoutSlot(id));
+  node.append(layoutGap(side, ids.length));
+  return node;
+}
+
+/** A drop target: the place an item lands when it is let go here. */
+function layoutGap (side, index) {
+  const node = document.createElement('div');
+  node.className = 'layout-gap';
+  node.dataset.index = String(index);
+  if (side) node.dataset.side = side;
+  return node;
+}
+
+function layoutSlot (id) {
+  const item = layoutItems().find((entry) => entry.id === id);
+  const node = document.createElement('div');
+  node.className = 'layout-item';
+  node.dataset.id = id;
+  node.dataset.side = layoutArmOf(id);
+  node.innerHTML = `${layoutGlyph(item)}<span class="label">${escapeHtml(item?.label ?? id)}</span>`
+    + '<button class="layout-remove" title="Take it out"></button>';
+  const remove = node.querySelector('.layout-remove');
+  remove.innerHTML = icon('close', { size: 11 });
+  remove.addEventListener('click', (event) => {
+    event.stopPropagation();
+    api.action('layout.set', { change: { op: 'remove', surface: arranging.surface, id } });
+  });
+  return node;
+}
+
+function layoutGlyph (item) {
+  return item?.icon ? icon(item.icon, { size: 14 }) : '<span class="layout-dot"></span>';
+}
+
+/** Everything the surface is not carrying: the palette the rest is dragged from. */
+function renderPalette () {
+  const carrying = new Set(layoutOrder());
+  const spare = layoutItems().filter((item) => !carrying.has(item.id));
+  const host = el('layoutPalette');
+  if (!spare.length) {
+    const note = document.createElement('div');
+    note.className = 'layout-empty';
+    note.textContent = 'Everything this surface has is in use';
+    host.replaceChildren(note);
+    return;
+  }
+  host.replaceChildren(...spare.map((item) => {
+    const node = document.createElement('div');
+    node.className = 'layout-item loose';
+    node.dataset.id = item.id;
+    node.innerHTML = `${layoutGlyph(item)}<span class="label">${escapeHtml(item.label)}</span>`;
+    return node;
+  }));
+}
+
+/**
+ * The drag itself.
+ *
+ * A press turns into a drag once the pointer has travelled far enough, because the
+ * island is also dragged sideways to fold away and a tap still has to be a tap.
+ * The dragged item keeps its place in the list — a lifted ghost, so the layout
+ * does not jump around under the hand — and the gap it would land in opens up.
+ * On release the arrangement is sent off and the answer arrives as a state push
+ * like any other.
+ */
+function bindArrangeDrag () {
+  let press = null;
+
+  root.addEventListener('pointerdown', (event) => {
+    const item = event.target.closest('.layout-item');
+    if (!item || event.target.closest('.layout-remove')) return;
+    press = { item, x: event.clientX, y: event.clientY, live: false };
+  });
+
+  root.addEventListener('pointermove', (event) => {
+    if (!press) return;
+    if (!press.live) {
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < DRAG_SLOP) return;
+      press.live = true;
+      arranging.drag = press;
+      press.item.classList.add('lifting');
+      root.classList.add('arranging');
+      // The ghost says what is being dragged, so a hand that has lifted a widget
+      // out of the palette can see what it picked up.
+      const ghost = el('arrangeGhost');
+      ghost.textContent = press.item.querySelector('.label')?.textContent ?? press.item.dataset.id;
+      ghost.hidden = false;
+    }
+    moveArrangeDrag(event);
+  });
+
+  const release = (event) => {
+    if (!press) return;
+    const { item, live } = press;
+    press = null;
+    arranging.drag = null;
+    item.classList.remove('lifting');
+    root.classList.remove('arranging');
+    el('arrangeGhost').hidden = true;
+    for (const node of root.querySelectorAll('.layout-gap.over')) node.classList.remove('over');
+    if (!live) return;
+    const target = layoutGapUnder(event.clientX, event.clientY);
+    if (target) dropArranged(item.dataset.id, target);
+  };
+
+  root.addEventListener('pointerup', release);
+  root.addEventListener('pointercancel', release);
+}
+
+function moveArrangeDrag (event) {
+  const ghost = el('arrangeGhost');
+  ghost.style.left = `${event.clientX}px`;
+  ghost.style.top = `${event.clientY}px`;
+  // The gap the item would land in lights up, so the drop is never a guess.
+  const target = layoutGapUnder(event.clientX, event.clientY);
+  for (const node of root.querySelectorAll('.layout-gap')) node.classList.toggle('over', node === target);
+}
+
+/**
+ * The gap the pointer is over. A gap is a thin line, so it gets a generous
+ * radius: the hand is aiming at the space between two things, not at a line.
+ */
+function layoutGapUnder (x, y) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const node of root.querySelectorAll('.layout-gap')) {
+    const box = node.getBoundingClientRect();
+    const distance = Math.hypot(x - (box.left + box.width / 2), y - (box.top + box.height / 2));
+    if (distance <= Math.max(box.height, 14) + 10 && distance < bestDistance) {
+      best = node;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function dropArranged (id, target) {
+  const change = { surface: arranging.surface, id, index: Number(target.dataset.index) };
+  // A gap belongs to the arm it sits in, so dropping one there also says which
+  // side of the housing the item ends up on.
+  if (target.dataset.side) change.arm = target.dataset.side;
+  api.action('layout.set', { change });
+}
 
 // ---------------------------------------------------------------- hover
 
@@ -1685,11 +2126,16 @@ api.on('system:tick', ({ cpu }) => {
   const media = view.snapshot?.media;
   if (media) view.snapshot.system.cpu = cpu;
   const label = root.querySelector('.widget[data-widget="cpu"] .label');
-  if (label && view.widgets.includes('cpu')) label.textContent = `${Math.round(cpu)}%`;
+  if (label) label.textContent = `${Math.round(cpu)}%`;
 });
 
 setInterval(() => {
-  if (view.widgets.includes('clock') && view.state === 'compact') render(view.snapshot);
+  // The clock is the one widget that shows the time passing, so the row has to be
+  // drawn again — but only while the row is what is on screen.
+  const compact = surfaceArms(view.snapshot ?? {}, 'compact');
+  if ((compact.right.includes('clock') || compact.left.includes('clock')) && view.state === 'compact') {
+    render(view.snapshot);
+  }
   if (el('clipboardList').childElementCount) renderClipboard(view.snapshot);
 }, 10_000);
 

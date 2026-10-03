@@ -24,6 +24,7 @@ const ACTIONS = {
   'island.volume': { label: 'Volume panel', keys: ['CommandOrControl+Alt+V'], media: null },
   'island.mic': { label: 'Microphone panel', keys: ['CommandOrControl+Alt+M'], media: null },
   'island.player': { label: 'Player panel', keys: ['CommandOrControl+Alt+P'], media: null },
+  'island.layout': { label: 'Arrange the island', keys: ['CommandOrControl+Alt+L'], media: null },
 };
 
 class Hotkeys {

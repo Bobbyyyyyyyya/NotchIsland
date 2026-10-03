@@ -160,17 +160,7 @@
 
       <!-- long press reveals these, the way extra controls slide up --------- -->
       <section class="panel" data-panel="quick">
-        <div class="quick">
-          <button class="quick-item" data-panel-open="volume" id="quickOutput"></button>
-          <button class="quick-item" data-panel-open="mic" id="quickMic"></button>
-          <button class="quick-item" data-panel-open="bluetooth" id="quickBluetooth"></button>
-          <button class="quick-item" data-panel-open="player" id="quickPlayer"></button>
-        </div>
-        <div class="quick">
-          <button class="quick-item" data-panel-open="clipboard" id="quickClipboard"></button>
-          <button class="quick-item" data-panel-open="settings" id="quickSettings"></button>
-          <button class="quick-item" id="quickTimer"></button>
-        </div>
+        <div id="quickRows"></div>
         <div class="section-title">Timers</div>
         <div class="quick-timers" id="quickTimers"></div>
         <div class="quick-active" id="quickActive"></div>
@@ -201,46 +191,68 @@
           <h2>Settings</h2>
           <button class="icon-button" data-action="close"></button>
         </div>
-        <div class="settings-scroll">
-          <div class="section-title">Appearance</div>
-          <label class="row">
-            <span>Compact shape</span>
-            <select id="styleSelect">
-              <option value="pill">Pill around the notch</option>
-              <option value="notch">Fill the notch exactly</option>
-            </select>
-          </label>
-          <label class="row">
-            <span>Expand on hover</span>
-            <input type="checkbox" id="hoverToggle" class="switch" />
-          </label>
-          <label class="row">
-            <span>Claim the media keys</span>
-            <input type="checkbox" id="mediaKeysToggle" class="switch" />
-          </label>
-          <label class="row">
-            <span>Open at login</span>
-            <input type="checkbox" id="loginToggle" class="switch" />
-          </label>
+        <div class="settings-scroll" id="settingsScroll">
+          <!-- The sections are wrapped so the layout can put them in any order and
+               leave out the ones that are not wanted. -->
+          <section class="settings-block" data-section="appearance">
+            <div class="section-title">Appearance</div>
+            <label class="row">
+              <span>Compact shape</span>
+              <select id="styleSelect">
+                <option value="pill">Pill around the notch</option>
+                <option value="notch">Fill the notch exactly</option>
+              </select>
+            </label>
+            <label class="row">
+              <span>Expand on hover</span>
+              <input type="checkbox" id="hoverToggle" class="switch" />
+            </label>
+            <label class="row">
+              <span>Claim the media keys</span>
+              <input type="checkbox" id="mediaKeysToggle" class="switch" />
+            </label>
+            <label class="row">
+              <span>Open at login</span>
+              <input type="checkbox" id="loginToggle" class="switch" />
+            </label>
+            <button class="text-button" data-panel-open="layout">Arrange the island…</button>
+          </section>
 
-          <div class="section-title">Widgets</div>
-          <div class="widget-toggles" id="widgetToggles"></div>
+          <section class="settings-block" data-section="hotkeys">
+            <div class="section-title">Hotkeys</div>
+            <div class="hotkey-list" id="hotkeyList"></div>
+          </section>
 
-          <div class="section-title">Hotkeys</div>
-          <div class="hotkey-list" id="hotkeyList"></div>
+          <section class="settings-block" data-section="updates">
+            <div class="section-title">Updates</div>
+            <div class="facts" id="updateFacts"></div>
+            <button class="text-button" id="updateCheck">Check for updates</button>
+            <button class="text-button" id="updateInstall" hidden>Restart and install</button>
+            <label class="row">
+              <span>Check on every launch</span>
+              <input type="checkbox" id="autoUpdateToggle" class="switch" />
+            </label>
+          </section>
 
-          <div class="section-title">Updates</div>
-          <div class="facts" id="updateFacts"></div>
-          <button class="text-button" id="updateCheck">Check for updates</button>
-          <button class="text-button" id="updateInstall" hidden>Restart and install</button>
-          <label class="row">
-            <span>Check on every launch</span>
-            <input type="checkbox" id="autoUpdateToggle" class="switch" />
-          </label>
+          <section class="settings-block" data-section="system">
+            <div class="section-title">System</div>
+            <div class="facts" id="facts"></div>
+            <button class="text-button" id="retryHelper" hidden>Retry system bridge</button>
+          </section>
+        </div>
+      </section>
 
-          <div class="section-title">System</div>
-          <div class="facts" id="facts"></div>
-          <button class="text-button" id="retryHelper" hidden>Retry system bridge</button>
+      <!-- where everything goes: drag it into place and see it at once -------- -->
+      <section class="panel" data-panel="layout">
+        <div class="panel-head">
+          <h2>Arrange</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+        <div class="layout-scroll">
+          <div class="layout-profiles" id="layoutProfiles"></div>
+          <div class="layout-tabs" id="layoutTabs"></div>
+          <div class="layout-surface" id="layoutSurface"></div>
+          <div class="layout-palette" id="layoutPalette"></div>
         </div>
       </section>
 
@@ -250,6 +262,10 @@
     <button class="island-collapse" id="islandCollapse" data-action="close"
             aria-label="Fold the island away"></button>
   </div>
+
+  <!-- The dragged item follows the pointer, so it cannot live inside the island:
+       that clips everything drawn within its border box. -->
+  <div class="arrange-ghost" id="arrangeGhost" hidden></div>
 
   <div class="toast" id="toast" hidden></div>
 

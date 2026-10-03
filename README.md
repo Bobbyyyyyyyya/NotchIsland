@@ -22,6 +22,12 @@ all in the notch, with F7–F12 working the way they do on Apple hardware.
 | AirDrop | only while AirDrop's wireless link is up |
 | CPU | load |
 
+Every widget in that row is yours to move, add or remove: the row is drawn as two
+arms either side of the housing and dragged into place from the Arrange panel
+(`⌘⌥L`), along with the quick controls and the order of the Settings sections. A
+profile is a whole set of those at once, so "office" and "evening" are one click
+apart in the tray.
+
 The island grows with the number of widgets, up to 560 pt; only when even that
 is not enough are widgets dropped from the outside in, the way the real island
 throws away detail to stay the size it is. A greeting from a device that just
@@ -106,8 +112,11 @@ open island folds it back to the pill, the same as dragging it down or tapping i
 - **Clipboard** — the last 25 snippets, click to copy one back.
 - **Clock** — the time in large digits with the seconds running along, plus the
   date.
-- **Settings** — shape, hover behaviour, media-key claim, widget toggles, live
+- **Settings** — shape, hover behaviour, media-key claim, update checks, live
   hotkey status and system facts.
+- **Arrange** — the editor: what is in the island row, which side of the housing it
+  sits on, what a long press reaches for, the order of the Settings sections, and
+  the profiles these are arranged into.
 
 The panel that opens for an activity has its own controls: pause and cancel for
 a timer, disconnect for an accessory, open the microphone or the player for the
@@ -121,6 +130,7 @@ rest.
 | `F10` / `F11` / `F12` | volume down · up · mute |
 | `⌘⌥Space` | expand / collapse the island |
 | `⌘⌥C` `⌘⌥V` `⌘⌥M` `⌘⌥P` | clipboard · sound · microphone · player |
+| `⌘⌥L` | arrange the island |
 
 Function keys are registered through `globalShortcut`, so they work while any
 other app is focused. If macOS hands a key to something else first, the settings
@@ -245,6 +255,10 @@ installed by the updater itself are not quarantined and do not have that problem
 - The app is a menu bar app (`LSUIElement`), so it has no Dock icon; the tray
   icon opens a menu that lists every panel — quick controls, battery, clock and
   the rest — alongside the demo actions and the preferences.
+- The row sheds widgets when it runs out of room, from whichever arm is widest: a
+  crowded island loses the detail it can spare, and never a live activity. Which arm
+  a widget sits on and in what order is yours to decide and is never changed for
+  you — except that a widget taken out of the arrangement stays out.
 - Album art comes from MediaRemote, which loads a cover only for the application
   it has in front: a player running in the background behind a browser may never
   get one at all. MediaRemote also unloads the image and loads it again a moment
@@ -264,6 +278,7 @@ src/main/island.js     overlay window, notch anchoring, spring animation
 src/main/notch.js      camera housing detection through AppKit
 src/main/hotkeys.js    F7–F12 and the fallback chains
 src/main/activities.js live activities: timers, media, mic, Bluetooth, charging, updates
+src/main/layout.js     the surfaces, what can go in them, and the profiles over them
 src/main/artwork.js    which song the cover on screen belongs to
 src/main/helper.js     builds and supervises the Objective-C bridge
 src/main/updater.js    electron-updater behind one plain status object

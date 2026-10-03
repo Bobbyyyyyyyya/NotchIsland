@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const activities = require('./activities');
+const layout = require('./layout');
 const prefs = require('./prefs');
 const { TrackCover } = require('./artwork');
 const { HelperBridge } = require('./helper');
@@ -356,7 +357,10 @@ name: 'activity-full',
     // only touched in memory, so the row goes back to the user's own on quit.
     name: 'compact-widgets',
     prepare: () => {
-      prefs.load().widgets = ['media', 'bluetooth', 'volume', 'mic', 'battery', 'clipboard', 'clock', 'cpu'];
+      prefs.load().layout = layout.normalise({
+        ...prefs.get('layout'),
+        compact: ['media', 'bluetooth', 'volume', 'mic', 'battery', 'clipboard', 'clock', 'cpu'],
+      });
       state.media = {
         ...state.media,
         title: 'Blinding Lights',
@@ -377,7 +381,7 @@ name: 'activity-full',
     // The wireless link is up: the widget shows that AirDrop is reachable.
     // That is the whole of what macOS lets us honestly report about it.
     prepare: () => {
-      prefs.load().widgets = ['airdrop', 'volume', 'battery'];
+      prefs.load().layout = layout.normalise({ ...prefs.get('layout'), compact: ['airdrop', 'volume', 'battery'] });
       state.airdrop = { live: true };
       return 'compact';
     },
@@ -388,7 +392,7 @@ name: 'activity-full',
     // first and painted with the cover afterwards.
     name: 'compact-bubble-artwork',
     prepare: () => {
-      prefs.load().widgets = ['volume', 'battery'];
+      prefs.load().layout = layout.normalise({ ...prefs.get('layout'), compact: ['volume', 'battery'] });
       state.bluetooth = {
         devices: [{ address: 'AA-BB', name: 'AirPods Pro', connected: true, battery: 0.44, charging: false }],
       };
@@ -405,7 +409,7 @@ name: 'activity-full',
     // the row over, so this shot is the greeting itself.
     prepare: () => {
       // A short row, so the greeting has room and nothing else is dropped.
-      prefs.load().widgets = ['bluetooth', 'volume', 'battery'];
+      prefs.load().layout = layout.normalise({ ...prefs.get('layout'), compact: ['bluetooth', 'volume', 'battery'] });
       state.bluetooth = {
         devices: [
           { address: 'AA-BB', name: 'AirPods Pro', connected: true, battery: -1, charging: false },
@@ -415,11 +419,24 @@ name: 'activity-full',
     },
   },
   {
+    // The editor has more in it than any other panel — a profile row, the surface
+    // tabs, two arms around a housing and a palette — so it is the one worth
+    // looking at before shipping a change to it.
+    name: 'layout',
+    prepare: () => {
+      prefs.load().layout = layout.normalise({
+        ...prefs.get('layout'),
+        compact: ['media', 'volume', 'battery', 'clock', 'cpu'],
+      });
+      return 'layout';
+    },
+  },
+  {
     // The update is on the island, so the small pill steps aside: what is being
     // photographed is the half-downloaded state as a bubble.
     name: 'compact-update-downloading',
     prepare: () => {
-      prefs.load().widgets = ['volume', 'battery'];
+      prefs.load().layout = layout.normalise({ ...prefs.get('layout'), compact: ['volume', 'battery'] });
       state.update = { ...state.update, state: 'downloading', version: '1.1.0', progress: 0.62 };
       return 'compact';
     },
@@ -429,7 +446,7 @@ name: 'activity-full',
     // is left of the update, and it is the way back into it.
     name: 'compact-update-snoozed',
     prepare: () => {
-      prefs.load().widgets = ['volume', 'battery'];
+      prefs.load().layout = layout.normalise({ ...prefs.get('layout'), compact: ['volume', 'battery'] });
       state.update = { ...state.update, state: 'ready', version: '1.1.0', progress: 1 };
       dismissed.set('update', Infinity);
       return 'compact';
@@ -796,7 +813,49 @@ const actions = {
   },
   'helper.retry': () => helper.start(),
   'shell.open': ({ target }) => shell.openExternal(target),
+
+  // ------------------------------------------------------------- the layout
+
+  /**
+   * Everything the layout editor can do, because they all end in the same two
+   * things: an arrangement in the preferences and an island that has to be
+   * measured and drawn again. Splitting it up would only move that pair around.
+   */
+  'layout.set': ({ change }) => {
+    prefs.setLayout(layout.change(prefs.get('layout'), change));
+    layoutChanged();
+  },  'layout.reset': () => {
+    prefs.setLayout(layout.normalise(null));
+    layoutChanged();
+  },
+  'layout.profile': ({ name }) => {
+    prefs.useProfile(name);
+    layoutChanged();
+  },
+  'layout.newProfile': ({ name }) => {
+    prefs.newProfile(name);
+    layoutChanged();
+  },
+  'layout.renameProfile': ({ from, to }) => {
+    prefs.renameProfile(from, to);
+    layoutChanged();
+  },
+  'layout.deleteProfile': ({ name }) => {
+    prefs.deleteProfile(name);
+    layoutChanged();
+  },
 };
+
+/**
+ * An arrangement changes what the island is, so it is measured and drawn again
+ * from scratch, and the tray has to hear about it: the profile menu is where the
+ * island is switched without opening anything.
+ */
+function layoutChanged () {
+  applyPreferences();
+  island.syncDisplays().then(() => island.resize(null, { animate: false }));
+  push();
+}
 
 function run (name, args = {}) {
   const action = actions[name];
@@ -989,6 +1048,7 @@ function kindOf (text) {
 }
 
 function snapshot () {
+  const profiles = prefs.layoutProfiles();
   return copyState({
     ...state,
     // The renderer reads this back: while `--shot` composes a scene the pointer
@@ -999,6 +1059,17 @@ function snapshot () {
     prefs: prefs.load(),
     geometry: island.geometry(),
     helper: helper.status(),
+    // What can be arranged where, and what is arranged where. The renderer draws
+    // the editor from this and nothing else, so a surface added to the layout
+    // module shows up without the renderer knowing anything about it.
+    layout: {
+      surfaces: layout.SURFACES,
+      arranged: Object.fromEntries(
+        layout.surfaceNames().map((surface) => [surface, layout.arranged(prefs.get('layout'), surface)]),
+      ),
+      profile: profiles.active,
+      profiles: Object.keys(profiles.all),
+    },
   });
 }
 
@@ -1056,6 +1127,8 @@ tray.setContextMenu(Menu.buildFromTemplate([
       click: () => run('panel.open', { state: id }),
     })),
     { type: 'separator' },
+    { label: 'Arrange the island…', click: () => run('panel.open', { state: 'layout' }) },
+    ...profileMenuItems(),
     {
       label: 'Expand on hover',
       type: 'checkbox',
@@ -1079,6 +1152,25 @@ tray.setContextMenu(Menu.buildFromTemplate([
     { type: 'separator' },
     { label: 'Quit Notch Island', accelerator: 'Command+Q', click: () => app.quit() },
   ]));
+}
+
+/**
+ * Switching arrangement without opening anything: a profile is a whole set of
+ * surfaces, so one item here replaces editing three lists by hand.
+ */
+function profileMenuItems () {
+  const { active, all } = prefs.layoutProfiles();
+  const names = Object.keys(all);
+  if (names.length < 2) return [];
+  return [{
+    label: 'Profile',
+    submenu: names.map((name) => ({
+      label: name,
+      type: 'radio',
+      checked: name === active,
+      click: () => run('layout.profile', { name }),
+    })),
+  }];
 }
 
 /**
