@@ -160,6 +160,19 @@ test('a layout from before the charger existed gains it, and keeps it on disk', 
   assert.strictEqual(layout.normalise(migrated).compact.includes('charging'), true, 'and it is idempotent');
 });
 
+test('an event never takes the island away from a panel the user opened', () => {
+  // The one that was reported: the charger filled up while the battery panel was
+  // open and the island put its own big charge bar on top of it.
+  assert.strictEqual(activities.shouldPresent('compact'), true, 'a folded island reacts on its own');
+  assert.strictEqual(activities.shouldPresent('activity:charging'), true, 'one event may replace another');
+  for (const panel of ['player', 'settings', 'battery', 'volume', 'layout', 'quick']) {
+    assert.strictEqual(activities.shouldPresent(panel), false, `${panel} is the island doing as it was asked`);
+  }
+  // An activity panel is named `activity:<id>`, and nothing else starts that way.
+  assert.strictEqual(activities.shouldPresent('activity:timer-3'), true);
+  assert.strictEqual(activities.shouldPresent(undefined), false);
+});
+
 test('a widget can be more than one size, and the size is stored', () => {
   const big = layout.normalise(null);
   assert.strictEqual(layout.sizeOf(big, 'compact', 'media'), 'big');

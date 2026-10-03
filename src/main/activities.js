@@ -339,6 +339,18 @@ function formatCountdown (seconds) {
   return `${minutes}:${String(rest).padStart(2, '0')} left`;
 }
 
+/**
+ * Whether the island should open by itself right now.
+ *
+ * Only while it is folded, or while it is already showing another event. A panel
+ * the user opened is the island doing what it was asked to, and replacing it — a
+ * battery filling up, say — is not an answer to anything they asked. The event
+ * still has its bubble in the row, and a tap on that opens it.
+ */
+function shouldPresent (islandState) {
+  return islandState === 'compact' || String(islandState ?? '').startsWith('activity:');
+}
+
 /** Ids that were not present before, i.e. events worth opening the island for. */
 function freshIds (previous, next) {
   const known = new Set(previous.map((activity) => activity.id));
@@ -361,6 +373,7 @@ module.exports = {
   formatCountdown,
   updateActivity,
   arranged,
+  shouldPresent,
   CHARGE_FULL_HOLD_MS,
   TRANSFER_DONE_HOLD_MS,
 };

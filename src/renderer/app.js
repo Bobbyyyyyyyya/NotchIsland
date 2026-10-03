@@ -1619,13 +1619,27 @@ function requestSize () {
 
 function openPanel (name) {
   if (name === 'close' || name === view.state) {
-    view.pinned = false;
+    forgetPanel();
     api.action('panel.open', { state: 'compact' });
     return;
   }
   view.pinned = true;
   view.lastPanel = name;
   api.action('panel.open', { state: name });
+}
+
+/**
+ * Forgets the panel that was open.
+ *
+ * Folding the island on its own — by hovering away, by a drag, by the hotkey —
+ * leaves it remembered, which is what makes hovering go back to what you were
+ * looking at. *Closing* a panel is not that: it is an answer to a question, and
+ * hovering straight afterwards must not put the same panel back on its own, every
+ * time, over whatever you are doing now.
+ */
+function forgetPanel () {
+  view.pinned = false;
+  view.lastPanel = 'player';
 }
 
 // --- drag: pulling the island down collapses it, pulling up opens it
@@ -1699,6 +1713,9 @@ document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action) {
     event.stopPropagation();
+    // The chevron and every panel's close button land here rather than in
+    // `openPanel`, so this is the other half of forgetting a closed panel.
+    if (action === 'close') forgetPanel();
     api.action(action, {});
     return;
   }

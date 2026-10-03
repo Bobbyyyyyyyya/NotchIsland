@@ -715,6 +715,7 @@ function refreshActivities () {
 function presentActivity (id) {
   const activity = state.activities.find((entry) => entry.id === id);
   if (!activity) return;
+  if (!activities.shouldPresent(island.state)) return;
   island.lastPanel = 'player';
   run('panel.open', { state: `activity:${id}` });
   clearTimeout(activityTimer);
