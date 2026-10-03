@@ -541,6 +541,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .widget[data-widget="bluetooth"] { background: rgba(10, 132, 255, 0.2); color: #8cc4ff; }
 .widget[data-widget="airdrop"] { background: rgba(10, 132, 255, 0.2); color: #8cc4ff; }
 .widget[data-widget="battery"] { background: rgba(48, 209, 88, 0.16); color: #6ee891; }
+.widget[data-widget="update"] { background: rgba(48, 209, 88, 0.16); color: #6ee891; }
 .widget[data-widget="cpu"] { background: rgba(255, 159, 10, 0.18); color: #ffc27a; }
 .widget[data-widget="volume"],
 .widget[data-widget="clock"] { background: rgba(255, 255, 255, 0.1); }
@@ -1159,6 +1160,11 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .bubble[data-kind="media"] .ring {
   background: conic-gradient(var(--purple) calc(var(--progress, 0) * 360deg), rgba(191, 90, 242, 0.26) 0);
 }
+/* A download is on its way to done, so its ring is the green a finished thing
+   gets rather than one of the blues that stand for something live. */
+.bubble[data-kind="update"] .ring {
+  background: conic-gradient(var(--green) calc(var(--progress, 0) * 360deg), rgba(48, 209, 88, 0.26) 0);
+}
 
 /*
  * The compact version of the charge and transfer bars. It is the same idea in a
@@ -1258,6 +1264,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .activity-icon[data-kind="bluetooth"],
 .activity-icon[data-kind="transfer"] { background: rgba(10, 132, 255, 0.18); color: #8cc4ff; }
 .activity-icon[data-kind="battery"] { background: rgba(48, 209, 88, 0.16); color: #6ee891; }
+.activity-icon[data-kind="update"] { background: rgba(48, 209, 88, 0.16); color: #6ee891; }
 .activity-icon[data-kind="mic"] { background: rgba(255, 69, 58, 0.16); color: #ff8a84; }
 .activity-icon.wave { position: relative; }
 .activity-icon.wave::after {

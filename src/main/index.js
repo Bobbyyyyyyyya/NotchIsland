@@ -11,6 +11,7 @@ const { HelperBridge } = require('./helper');
 const { Hotkeys } = require('./hotkeys');
 const { Island } = require('./island');
 const { MediaRemoteBridge } = require('./media-remote');
+const { Updater } = require('./updater');
 
 /**
  * Notch Island — a Dynamic Island for the MacBook camera housing.
@@ -30,6 +31,10 @@ const helper = new HelperBridge();
 const mediaRemote = new MediaRemoteBridge();
 const island = new Island(prefs);
 const hotkeys = new Hotkeys(handleHotkey);
+const updater = new Updater(prefs);
+
+/** The activity id the update owns; it never retires on its own. */
+const UPDATE_ACTIVITY = 'update';
 
 const state = {
   media: { title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0, playbackState: 0, source: '', preferredApp: null, controlled: false },
@@ -44,6 +49,7 @@ const state = {
   system: { cpu: 0, micAccess: 'unknown', displays: 0 },
   helper: { available: false, reason: 'starting', capabilities: {} },
   hotkeys: {},
+  update: { ...updater.status(), current: app.getVersion() },
 };
 
 /** Ids the user swiped away; they may come back after a while. */
@@ -82,6 +88,14 @@ async function bootstrap () {
   helper.on('event', onHelperEvent);
   helper.start();
 
+  // A new version is a live activity like any other: the updater's status turns
+  // into a bubble, and `push` opens the island on it by itself.
+  updater.on('status', (status) => {
+    state.update = { ...status, current: app.getVersion() };
+    refreshTrayMenu();
+    push();
+  });
+
   // MediaRemote is refused to this process on macOS 15.4 and up, so now
   // playing data and transport come from the perl-hosted adapter. The helper
   // keeps owning volume, devices and the media keys it does receive.
@@ -91,6 +105,7 @@ async function bootstrap () {
 
   applyPreferences();
   startPolling();
+  updater.start();
 
   if (process.argv.includes('--shot')) await captureReference();
   if (process.argv.includes('--selftest')) await selftest();
@@ -159,6 +174,12 @@ async function selftest () {
   for (let attempt = 0; attempt < 30 && !batteryReported; attempt++) await wait(200);
   check('battery reported', batteryReported && state.battery.level >= 0 && state.battery.level <= 1,
     `${Math.round(state.battery.level * 100)}%`);
+
+  // The updater refuses to look for an update in a launch that was never
+  // packaged, and says so rather than failing quietly: that is the whole of what
+  // it can be checked for here, since there is no feed to check against.
+  check('updater knows it is unpackaged', state.update.state === 'unsupported', state.update.state);
+  check('updater status reaches the renderer', Boolean(state.update.current), state.update.current);
 
   // Dragging an open island down must collapse it again.
   run('panel.open', { state: 'player' });
@@ -372,6 +393,43 @@ name: 'activity-full',
       return 'compact';
     },
   },
+  {
+    // The update is on the island, so the small pill steps aside: what is being
+    // photographed is the half-downloaded state as a bubble.
+    name: 'compact-update-downloading',
+    prepare: () => {
+      prefs.load().widgets = ['volume', 'battery'];
+      state.update = { ...state.update, state: 'downloading', version: '1.1.0', progress: 0.62 };
+      return 'compact';
+    },
+  },
+  {
+    // The other half: once the panel has been folded away the pill is all that
+    // is left of the update, and it is the way back into it.
+    name: 'compact-update-snoozed',
+    prepare: () => {
+      prefs.load().widgets = ['volume', 'battery'];
+      state.update = { ...state.update, state: 'ready', version: '1.1.0', progress: 1 };
+      dismissed.set('update', Infinity);
+      return 'compact';
+    },
+  },
+  {
+    name: 'activity-update-available',
+    prepare: () => {
+      state.update = { ...state.update, state: 'available', version: '1.1.0', progress: null };
+      return 'activity:update';
+    },
+  },
+  {
+    // Downloaded and waiting: the bar is full and the only question left is when
+    // to restart, so the panel offers exactly that and nothing else.
+    name: 'activity-update-ready',
+    prepare: () => {
+      state.update = { ...state.update, state: 'ready', version: '1.1.0', progress: 1 };
+      return 'activity:update';
+    },
+  },
 ];
 
 /* A stand-in sleeve: the helper's artwork arrives as a data URL, so the shot
@@ -415,6 +473,7 @@ async function captureReference () {
   const bluetooth = state.bluetooth;
   const input = state.input;
   const airdrop = state.airdrop;
+  const update = state.update;
 
   for (const shot of SHOTS) {
     // An activity opening on its own would hijack the capture, and a transfer
@@ -428,6 +487,8 @@ async function captureReference () {
     state.bluetooth = bluetooth;
     state.input = input;
     state.airdrop = airdrop;
+    state.update = update;
+    dismissed.delete('update');
     // A staged shot may return the state it needs, since a transfer only exists
     // under an id the module just made up.
     const staged = shot.prepare?.(battery) ?? null;
@@ -508,6 +569,8 @@ async function captureReference () {
     console.log(`[${shot.name}] ${report}`);
   }
   state.battery = battery;
+  state.update = update;
+  dismissed.delete('update');
   capturing = false;
   console.log(`screenshots written to ${target}`);
   app.quit();
@@ -635,10 +698,19 @@ const actions = {
   'activity.dismiss': ({ id }) => {
     if (id?.startsWith('timer-')) activities.cancelTimer(id);
     else if (id?.startsWith('transfer-')) activities.cancelTransfer(id);
-    else dismissed.set(id, Date.now() + ACTIVITY_LINGER_MS);
+    // An update does not go away on its own, so "Later" has to mean something
+    // that lasts: dismissed until the app is started again, when it is checked
+    // and announced once more if it is still there.
+    else dismissed.set(id, id === UPDATE_ACTIVITY ? Infinity : Date.now() + ACTIVITY_LINGER_MS);
     if (island.state === `activity:${id}`) run('panel.open', { state: 'compact' });
     else push();
   },
+
+  // ---------------------------------------------------------------- updates
+
+  'update.check': () => updater.check(),
+  'update.download': () => updater.download(),
+  'update.install': () => { updater.install(); },
 
   // A finished AirDrop is not something an app is allowed to hear about, so this
   // is started by hand. The animation is real; only the trigger is ours.
@@ -985,8 +1057,34 @@ tray.setContextMenu(Menu.buildFromTemplate([
       click: (item) => run('prefs.set', { patch: { launchAtLogin: item.checked } }),
     },
     { type: 'separator' },
+    ...updateMenuItems(),
+    { type: 'separator' },
     { label: 'Quit Notch Island', accelerator: 'Command+Q', click: () => app.quit() },
   ]));
+}
+
+/**
+ * The island is where an update announces itself, but the tray is where it is
+ * asked for: there has to be a way to check without waiting for a launch, and a
+ * way to install without hunting for the panel.
+ */
+function updateMenuItems () {
+  const { state: updateState, version } = state.update;
+  if (updateState === 'ready') {
+    return [
+      {
+        label: version ? `Restart and install ${version}` : 'Restart and install',
+        click: () => run('update.install'),
+      },
+    ];
+  }
+  if (updateState === 'downloading' || updateState === 'checking') {
+    return [{ label: 'Checking for updates…', enabled: false }];
+  }
+  return [{
+    label: updateState === 'error' ? 'Retry update check' : 'Check for Updates…',
+    click: () => run('update.check'),
+  }];
 }
 
 function labelForPanel (id) {

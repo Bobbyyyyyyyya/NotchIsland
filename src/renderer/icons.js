@@ -39,6 +39,12 @@ const solid = {
   timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.8M9.5 2.5h5"/>',
   musicNote: '<path d="M9.5 17.4V6.6l9-1.8v10.8"/><circle cx="7" cy="17.6" r="2.6"/><circle cx="16" cy="15.8" r="2.6"/>',
   bluetooth: '<path d="m8 6.8 7.4 4.6a3.4 3.4 0 0 1 0 5.2L8 21.2V6.8Z"/><path d="M12 9.4 8 6.8M12 14.6l4 2.6"/>',
+  // An arrow landing on a line: something arriving from above. Used for the
+  // update download, so it never has to mean "sync" or "refresh" as well.
+  download: '<path d="M12 3.5v11"/><path d="m7.4 10.4 4.6 4.6 4.6-4.6"/><path d="M4 19.4h16"/>',
+  // The same arrow again, one turn round: the version is already on disk and all
+  // that is left is starting it.
+  restart: '<path d="M20.2 12a8.2 8.2 0 1 1-2.7-6.1"/><path d="M20.6 3.4v4.7h-4.7"/>',
 };
 
 const stroke = {

@@ -42,6 +42,7 @@ the idle pill. Right now it reacts to:
 - plugging in or unplugging the charger
 - the battery filling up, and reaching 100 %
 - a countdown timer you start from the island
+- a new version of Notch Island: its progress, and then the restart
 
 An event never takes the row over on its own: the charging ring sits beside the
 clock and the player, and it is always a widget that is dropped first when the
@@ -191,6 +192,45 @@ next to the app's preferences. `airdrop-live`, `bt-hello` and `compact-bubbles`
 stage the cases that are hard to catch on their own: a live AirDrop link, a
 device that just connected, and three activities at once.
 
+## Updates
+
+A built copy checks GitHub for a newer release once per launch and downloads it
+in the background. The island says so the way it says everything else: a small
+pill in the row while the island is folded away, and the full panel the moment
+there is something new — a progress bar while it downloads, then *Restart now* and
+*Later*. Quitting normally installs it too, so the update is never more than one
+restart away. A check that fails or finds nothing stays out of the island; the
+settings panel and the tray menu say what happened.
+
+```bash
+npm run dist           # make, then publish a GitHub release
+GITHUB_TOKEN=… npm run dist
+```
+
+`npm run dist` builds the app, writes `latest-mac.yml` next to the zip, and
+uploads the DMG, the zip and that file to a release tagged with the version in
+`package.json`. Bump the version first; the updater compares it against the one in
+the feed.
+
+Two details that Forge does not do on its own, both handled by the
+`update-feed` plugin in `tools/`:
+
+- `app-update.yml` is written into `Contents/Resources` before the bundle is
+  finished, because that is the only place a packaged app can be told which
+  repository to ask.
+- `latest-mac.yml` is written in a `postMake` hook rather than by a maker, because
+  Forge runs makers concurrently — no maker can count on the zip already existing —
+  and the digest has to be of the file that is actually uploaded.
+
+The repository comes from `GITHUB_REPOSITORY` (`owner/repo`, which a release
+workflow already knows) or from the `origin` remote. Without either one
+`npm run package` still works, but the build gets no feed and `npm run dist`
+stops with an explanation.
+
+The build is unsigned (`osxSign: false`), so the *first* install from a DMG has
+to be opened with right-click → Open, or Gatekeeper will refuse it. Updates
+installed by the updater itself are not quarantined and do not have that problem.
+
 ## Notes and limits
 
 - The island is a click-through overlay: clicks land on the app underneath
@@ -216,11 +256,14 @@ src/main/index.js      app lifecycle, actions, tray, polling
 src/main/island.js     overlay window, notch anchoring, spring animation
 src/main/notch.js      camera housing detection through AppKit
 src/main/hotkeys.js    F7–F12 and the fallback chains
-src/main/activities.js live activities: timers, media, mic, Bluetooth, charging
+src/main/activities.js live activities: timers, media, mic, Bluetooth, charging, updates
 src/main/helper.js     builds and supervises the Objective-C bridge
+src/main/updater.js    electron-updater behind one plain status object
 src/main/prefs.js      persisted preferences
 src/renderer/app.js    island state machine, widgets, panels
 src/renderer/styles.css
 tools/helper/NotchHelper.m
 tools/make-icon.js     generates the app and tray icons without dependencies
+tools/update-feed.js   the two manifests an update needs
+tools/forge-plugin-update-feed.js  writes them into the build and the release
 ```

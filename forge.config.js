@@ -1,4 +1,7 @@
 const path = require('node:path');
+const { repository } = require('./tools/update-feed');
+
+const feed = repository();
 
 /**
  * @type {import('@electron-forge/cli').ForgeConfig}
@@ -33,5 +36,26 @@ module.exports = {
       format: 'ULFO',
     },
   ],
-  plugins: [],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        // `owner`/`name` are Forge's names for the repository; without them the
+        // publisher says so itself, which is the right thing to happen to a
+        // checkout that has never been published.
+        repository: feed ? { owner: feed.owner, name: feed.repo } : undefined,
+        // A draft release is invisible to the updater: it reads the atom feed of
+        // published releases only. Publishing has to be the end of `npm run
+        // dist`, not a follow-up click in a browser.
+        draft: false,
+        prerelease: false,
+        generateReleaseNotes: true,
+      },
+    },
+  ],
+  plugins: [
+    // Writes app-update.yml into the build and latest-mac.yml into the release.
+    { name: './tools/forge-plugin-update-feed', config: {} },
+  ],
 };
+

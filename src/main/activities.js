@@ -136,6 +136,58 @@ function liveTimers () {
 }
 
 /**
+ * An app update is the one thing here that arrives uninvited, so it is also the
+ * one thing worth opening the island for: a small pill in the row first, and the
+ * full panel the moment there is a new version, downloading or ready to install.
+ *
+ * Only the states that ask for something count. A failed check and a machine
+ * that is already up to date stay out of the island entirely — the island
+ * opening every launch to say "nothing" would be worse than saying nothing.
+ */
+function updateActivity (update) {
+  if (!update) return null;
+  switch (update.state) {
+    case 'available':
+      return {
+        id: 'update',
+        kind: 'update',
+        title: `Notch Island ${update.version}`,
+        subtitle: 'New version available',
+        progress: null,
+        icon: 'download',
+        dismissible: true,
+        interactive: true,
+      };
+    case 'downloading':
+      return {
+        id: 'update',
+        kind: 'update',
+        title: `Notch Island ${update.version}`,
+        subtitle: `Downloading ${Math.round((update.progress ?? 0) * 100)}%`,
+        progress: update.progress ?? 0,
+        icon: 'download',
+        dismissible: true,
+        interactive: true,
+      };
+    case 'ready':
+      return {
+        id: 'update',
+        kind: 'update',
+        title: `Notch Island ${update.version}`,
+        subtitle: 'Restart to install',
+        // A full bar, so the eye reads it the same way as a finished transfer:
+        // the work is done, only the restart is left.
+        progress: 1,
+        icon: 'download',
+        dismissible: true,
+        interactive: true,
+      };
+    default:
+      return null;
+  }
+}
+
+/**
  * Turns the current system state into the list of activities the island shows.
  *
  * @param {object} state the main process snapshot
@@ -144,6 +196,9 @@ function liveTimers () {
 function derive (state) {
   const activities = [];
   const now = Date.now();
+
+  const update = updateActivity(state.update);
+  if (update) activities.push(update);
 
   for (const { timer, remaining, progress } of liveTimers()) {
     if (remaining <= 0) {
@@ -282,6 +337,7 @@ module.exports = {
   transferState,
   formatBytes,
   formatCountdown,
+  updateActivity,
   CHARGE_FULL_HOLD_MS,
   TRANSFER_DONE_HOLD_MS,
 };

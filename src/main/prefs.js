@@ -36,6 +36,12 @@ const DEFAULTS = {
     musickitToken: '',
   },
 
+  updates: {
+    // Once per launch, silently; the island asks before the app restarts.
+    autoCheck: true,
+    autoDownload: true,
+  },
+
   launchAtLogin: false,
   debug: false,
 };

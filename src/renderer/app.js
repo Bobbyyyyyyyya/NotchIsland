@@ -55,8 +55,18 @@ const PROGRESS_TINT = {
   media: 'var(--purple)',
   bluetooth: 'var(--blue)',
   transfer: 'var(--blue)',
+  update: 'var(--green)',
   mic: 'var(--red)',
 };
+
+/**
+ * Whether an update is worth a place in the island. A machine that is already up
+ * to date, and a check that failed, both stay silent: the island opening every
+ * launch to say "nothing" would be worse than saying nothing at all.
+ */
+function hasSomethingToAnnounce (update) {
+  return ['available', 'downloading', 'ready'].includes(update?.state);
+}
 
 function chargeColor (level) {
   // Nothing happens until the battery is worth mentioning, and full is full green.
@@ -324,6 +334,36 @@ const WIDGETS = {
     },
   },
 
+  update: {
+    label: 'Update',
+    render (state) {
+      const update = state.update;
+      // While the island is showing the update itself the bubble beside the
+      // housing says it, so this pill would only repeat it. It takes over once
+      // the panel has been folded away: the small icon is how the update gets
+      // its island back.
+      if (!hasSomethingToAnnounce(update)) return null;
+      if ((state.activities ?? []).some((activity) => activity.id === 'update')) return null;
+
+      const node = document.createElement('button');
+      const ready = update.state === 'ready';
+      // `keep` is the marker `requestSize` reads: an update that is ready to
+      // install is as much the thing that just happened as the greeting is, so it
+      // is never the widget the row gives up.
+      node.className = 'widget readout keep';
+      node.dataset.panelOpen = 'activity:update';
+      node.insertAdjacentHTML('beforeend', icon(ready ? 'restart' : 'download', { size: 14 }));
+      if (update.state === 'downloading') {
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = `${Math.round((update.progress ?? 0) * 100)}%`;
+        node.append(label);
+      }
+      node.title = ready ? 'Restart to install' : 'A new version is available';
+      return node;
+    },
+  },
+
   clock: {
     label: 'Clock',
     render () {
@@ -363,6 +403,9 @@ const WIDGETS = {
  */
 function bubbleLabel (activity) {
   if (activity.kind === 'timer') return (activity.subtitle || activity.title).replace(/ left$/, '');
+  // An update wears its progress the way a timer wears its countdown: the
+  // percentage is the whole point of it, the version is only in the panel.
+  if (activity.kind === 'update') return activity.subtitle ?? activity.title;
   // A device that just connected says so here too, for the same few seconds:
   // whether the greeting lands on the widget pill or on this bubble, it reads
   // "Connected to …" the moment the accessory shows up.
@@ -607,7 +650,10 @@ function renderWidgets (state) {
   }
 
   const widgets = [];
-  for (const id of wanted) {
+  // The update pill is not a preference: it is the same status light the update
+  // bubble is, for the moment there is no bubble because the island is not open.
+  const row = hasSomethingToAnnounce(state.update) ? ['update', ...wanted] : wanted;
+  for (const id of row) {
     const fresh = WIDGETS[id].render(state);
     if (!fresh) {
       view.widgetNodes.delete(id);
@@ -620,7 +666,7 @@ function renderWidgets (state) {
     widgets.push(fresh);
   }
   for (const id of [...view.widgetNodes.keys()]) {
-    if (!wanted.includes(id)) view.widgetNodes.delete(id);
+    if (!row.includes(id)) view.widgetNodes.delete(id);
   }
 
   // An event sits beside the widgets instead of taking the row over, so a phone
@@ -839,6 +885,40 @@ function renderSettings (state) {
     ['Displays', state.system.displays],
   ].map(([key, value]) => `<div>${key} <b>${value}</b></div>`).join('');
   el('retryHelper').hidden = state.helper.available;
+
+  renderUpdates(state);
+}
+
+/**
+ * The island announces an update; this is where it is asked about. Nothing here
+ * opens by itself, so a machine that is already current simply says so and stops.
+ */
+function renderUpdates (state) {
+  const update = state.update ?? {};
+  el('updateFacts').innerHTML = [
+    ['Version', escapeHtml(update.current ?? '')],
+    ['Status', escapeHtml(updateStatus(update))],
+  ].map(([key, value]) => `<div>${key} <b>${value}</b></div>`).join('');
+
+  el('autoUpdateToggle').checked = state.prefs.updates.autoCheck !== false;
+  el('updateCheck').disabled = update.state === 'checking' || update.state === 'downloading';
+  el('updateCheck').textContent = el('updateCheck').disabled
+    ? (update.state === 'downloading' ? 'Downloading…' : 'Checking…')
+    : (update.state === 'error' ? 'Retry' : 'Check for updates');
+  el('updateInstall').hidden = update.state !== 'ready';
+}
+
+function updateStatus (update) {
+  switch (update.state) {
+    case 'unsupported': return update.error ?? 'only in the packaged app';
+    case 'checking': return 'checking…';
+    case 'available': return `${update.version} is available`;
+    case 'downloading': return `downloading ${Math.round((update.progress ?? 0) * 100)}%`;
+    case 'ready': return `${update.version} is ready to install`;
+    case 'error': return update.error ?? 'the check failed';
+    case 'current': return update.checkedAt ? `up to date, checked ${relativeTime(update.checkedAt)}` : 'up to date';
+    default: return 'not checked yet';
+  }
 }
 
 function syncPanels () {
@@ -1069,6 +1149,18 @@ function renderActivity (state, id) {
     actions.push(quickButton('Open microphone', 'mic', () => openPanel('mic')));
   } else if (activity.kind === 'media') {
     actions.push(quickButton('Open player', 'music', () => openPanel('player')));
+  } else if (activity.kind === 'update') {
+    // The one activity whose two states ask for different things: there is
+    // nothing to press while the download is still running, and everything to
+    // press once it is on disk.
+    const update = view.snapshot?.update ?? {};
+    if (update.state === 'available') {
+      actions.push(quickButton('Download', 'download', () => api.action('update.download', {})));
+    }
+    if (update.state === 'ready') {
+      actions.push(quickButton('Restart now', 'restart', () => api.action('update.install', {})));
+    }
+    actions.push(quickButton('Later', 'close', () => api.action('activity.dismiss', { id: activity.id })));
   } else if (isCharge) {
     // The battery carries no other control, so the panel offers the one thing
     // left: putting the island back to sleep.
@@ -1295,11 +1387,13 @@ function requestSize () {
   // an event because it is a little too wide would lose the whole point.
   while (compactWidth() > view.maxWidth && left.children.length + right.children.length > 2) {
     // The greeting keeps its place: it is the thing that just happened, and the
-    // row is full because of it. Every other widget goes first, from whichever
-    // arm has the most to give. It still goes last, so nothing is ever pushed
-    // past the island's edge.
+    // row is full because of it. An update waiting to be installed keeps its
+    // place for the same reason. Everything else goes first, from whichever arm
+    // has the most to give, so nothing is ever pushed past the island's edge.
     const arms = [left, right].sort((a, b) => armContentWidth(b) - armContentWidth(a));
-    const droppable = (node) => !node.classList.contains('bubble') && !node.classList.contains('bt-hello');
+    const droppable = (node) => !node.classList.contains('bubble')
+      && !node.classList.contains('bt-hello')
+      && !node.classList.contains('keep');
     const candidate = arms
       .map((arm) => [...arm.children].reverse().find(droppable))
       .find(Boolean) ?? arms
@@ -1426,9 +1520,12 @@ document.addEventListener('change', (event) => {
   if (id === 'hoverToggle') api.action('prefs.set', { patch: { island: { hoverToExpand: checked } } });
   if (id === 'mediaKeysToggle') api.action('prefs.set', { patch: { hotkeys: { mediaKeys: checked } } });
   if (id === 'loginToggle') api.action('prefs.set', { patch: { launchAtLogin: checked } });
+  if (id === 'autoUpdateToggle') api.action('prefs.set', { patch: { updates: { autoCheck: checked } } });
 });
 
 el('retryHelper').addEventListener('click', () => api.action('helper.retry', {}));
+el('updateCheck').addEventListener('click', () => api.action('update.check', {}));
+el('updateInstall').addEventListener('click', () => api.action('update.install', {}));
 
 // ---------------------------------------------------------------- hover
 
