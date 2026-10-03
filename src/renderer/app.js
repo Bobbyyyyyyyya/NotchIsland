@@ -1821,8 +1821,34 @@ function renderArranging () {
   arranging.signature = signature;
   renderProfiles();
   renderSurfaceTabs();
+  renderCount();
   renderSurfaceStage();
   renderPalette();
+}
+
+/**
+ * How much room each side has, in the title bar.
+ *
+ * It is the one number that decides whether a drop will be taken, so it belongs
+ * where it can be read without hunting for it — and it turns amber as a side fills
+ * up rather than only when it is full, which is the warning that arrives before the
+ * refusal.
+ */
+function renderCount () {
+  const full = view.layout?.fullness;
+  const limit = view.layout?.limit;
+  const node = el('layoutCount');
+  if (!full || !limit) {
+    // A surface that is one list has no sides to count, so it counts as a whole.
+    const carried = view.layout?.arranged?.[arranging.surface]?.length ?? 0;
+    const total = (view.layout?.surfaces?.[arranging.surface]?.items ?? []).length;
+    node.textContent = `${carried} of ${total}`;
+    node.dataset.tight = '';
+    return;
+  }
+  node.textContent = `Left ${full.left.used}/${full.left.max} · Right ${full.right.used}/${full.right.max}`;
+  const worst = Math.max(full.left.used, full.right.used);
+  node.dataset.tight = worst >= full.right.max ? 'full' : worst >= full.right.max - 1 ? 'near' : '';
 }
 
 /**
@@ -1936,7 +1962,10 @@ function layoutSide (side, label, ids) {
 
   const name = document.createElement('div');
   name.className = 'layout-side-name';
-  name.textContent = ids.length ? `${label} · ${ids.length}` : label;
+  // The count lives beside the side it is about, so the title bar answers "how full
+  // is the row" and the bubble answers "which side".
+  name.textContent = `${label} ${ids.length}/${view.layout?.limit ?? '–'}`;
+  if (view.layout?.limit && ids.length >= view.layout.limit) node.classList.add('full');
 
   node.append(arm, name);
   return node;
@@ -2087,7 +2116,13 @@ function moveArrangeDrag (event) {
   ghost.style.top = `${event.clientY}px`;
   // The gap the item would land in lights up, so the drop is never a guess.
   const target = layoutTargetUnder(event.clientX, event.clientY);
-  for (const node of root.querySelectorAll('.layout-gap')) node.classList.toggle('over', node === target);
+  const side = target?.closest?.('.layout-side') ?? null;
+  for (const node of root.querySelectorAll('.layout-gap')) {
+    const owner = node.closest('.layout-side');
+    const open = !owner || sideHasRoom(owner, arranging.drag?.item?.dataset.id);
+    node.classList.toggle('over', node === target && open);
+    if (owner) owner.classList.toggle('full', !open);
+  }
   for (const side of root.querySelectorAll('.layout-side')) side.classList.toggle('over', side.contains(target));
 }
 
@@ -2119,9 +2154,13 @@ function layoutTargetUnder (x, y) {
   for (const side of root.querySelectorAll('.layout-side')) {
     const box = side.getBoundingClientRect();
     if (x < box.left - 8 || x > box.right + 8 || y < box.top - 8 || y > box.bottom + 8) continue;
-    // The end of the side, so an item dropped on a half-full arm lands after what
-    // is already there rather than in a gap nobody aimed at.
-    return bestGapFor(side);
+    // A side with no room is not a place to put anything, so it is not a place to
+    // aim at either: it stops lighting up and the drop is refused with a reason
+    // rather than quietly doing nothing.
+    if (sideHasRoom(side, arranging.drag?.item?.dataset.id)) {
+      return bestGapFor(side);
+    }
+    return null;
   }
 
   for (const row of root.querySelectorAll('.layout-list')) {
@@ -2132,6 +2171,19 @@ function layoutTargetUnder (x, y) {
   return null;
 }
 
+/**
+ * Whether a side still has room for the item being dragged, which is not the same as
+ * whether it is full: an item already on that side only ever moves within the room it
+ * already has.
+ */
+function sideHasRoom (side, id) {
+  const limit = view.layout?.limit;
+  if (!limit) return true;
+  const arm = side.querySelector('.layout-arm');
+  const carried = arm ? arm.querySelectorAll('.layout-item').filter((item) => item.dataset.id !== id).length : 0;
+  return carried < limit;
+}
+
 function bestGapFor (side) {
   const gaps = side.querySelectorAll('.layout-gap');
   return gaps[gaps.length - 1] ?? null;
@@ -2139,6 +2191,12 @@ function bestGapFor (side) {
 
 function dropArranged (id, target) {
   if (!target?.dataset) return;
+  // The limit is a rule, so it is enforced here as well as in the layout: a drop
+  // onto a side with no room is refused with a reason instead of appearing to work.
+  if (target.dataset.side && !sideHasRoom(target.closest('.layout-side'), id)) {
+    toast(`${target.dataset.side === 'left' ? 'Left' : 'Right'} already holds ${view.layout?.limit} — take one out first`);
+    return;
+  }
   const change = { surface: arranging.surface, id, index: Number(target.dataset.index) };
   // A gap belongs to the side it sits in, so dropping one there also says which
   // side of the housing the item ends up on.

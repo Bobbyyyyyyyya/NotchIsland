@@ -29,7 +29,15 @@ onto the side you want them on, or into a gap between two others to put them
 somewhere in the middle. Both sides are always there, so moving something across is
 one drag whether or not either side has anything on it yet. The Arrange panel
 (`⌘⌥L`) does the same for the quick controls and the order of the Settings
-sections. A
+sections.
+
+A side holds **three** widgets and no more. It is a rule rather than a setting: a
+row that can grow without end is a row that ends up carrying things nobody looks at,
+and the island was already shedding widgets from the outside in once it ran out of
+width — so what the arrangement said and what actually fitted would stop agreeing.
+The count is in the Arrange panel's title bar, amber as a side fills and red when it
+is full, and a full side stops being a place to aim at. What does not fit is in the
+palette, one drag away, never deleted. A
 widget that can be more than one size — music is — says so with a badge, and a tap
 steps it through. A profile is a whole set of those at once, so "office" and
 "evening" are one click apart in the tray.
@@ -266,10 +274,12 @@ installed by the updater itself are not quarantined and do not have that problem
 - The app is a menu bar app (`LSUIElement`), so it has no Dock icon; the tray
   icon opens a menu that lists every panel — quick controls, battery, clock and
   the rest — alongside the demo actions and the preferences.
-- The row sheds widgets when it runs out of room, from whichever arm is widest: a
-  crowded island loses the detail it can spare, and never a live activity. Which arm
-  a widget sits on and in what order is yours to decide and is never changed for
-  you — except that a widget taken out of the arrangement stays out.
+- A side of the row holds three widgets and no more, so a row is six. Live
+  activities are not counted against it and are never dropped; when the row still
+  cannot fit, `requestSize` sheds widgets from whichever arm is widest. Which arm a
+  widget sits on and in what order is yours to decide and is never changed for you —
+  except that a widget taken out of the arrangement stays out, and one that will not
+  fit goes back to the palette rather than being deleted.
 - Album art comes from MediaRemote, which loads a cover only for the application
   it has in front: a player running in the background behind a browser may never
   get one at all. MediaRemote also unloads the image and loads it again a moment

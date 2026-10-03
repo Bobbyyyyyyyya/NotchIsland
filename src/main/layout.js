@@ -73,6 +73,17 @@ const SURFACES = {
   },
 };
 
+/**
+ * How many items one side of the housing may hold.
+ *
+ * A rule rather than a setting, because a row that can grow without end is a row
+ * that ends up carrying things nobody looks at: the island sheds widgets from the
+ * outside in, so what the arrangement says and what actually fits stop agreeing.
+ * Six in the row is what keeps it a pill beside the housing rather than a shelf
+ * across it.
+ */
+const MAX_PER_SIDE = 3;
+
 /** How big each compact item starts, where it can be drawn at more than one size. */
 const DEFAULT_SIZES = { media: 'big' };
 
@@ -85,14 +96,14 @@ const DEFAULT_SIZES = { media: 'big' };
  */
 const DEFAULT_SIDES = {
   media: 'right',
-  bluetooth: 'right',
   volume: 'right',
-  mic: 'right',
   battery: 'right',
-  charging: 'right',
-  meeting: 'left',
-  clipboard: 'left',
   clock: 'left',
+  clipboard: 'left',
+  bluetooth: 'left',
+  mic: 'left',
+  charging: 'left',
+  meeting: 'left',
   airdrop: 'left',
   cpu: 'left',
 };
@@ -105,7 +116,9 @@ const DEFAULT_SIDES = {
  */
 const DEFAULT_LAYOUT = {
   compact: [
-    'media', 'bluetooth', 'volume', 'mic', 'battery', 'charging', 'meeting', 'clipboard', 'clock', 'airdrop', 'cpu',
+    // Three a side, so the row is six items wide. The rest are in the palette from
+    // the first launch rather than being dropped out of a row that was too long.
+    'media', 'volume', 'battery', 'clock', 'clipboard', 'bluetooth',
   ],
   quick: ['volume', 'mic', 'bluetooth', 'player', 'clipboard', 'settings', 'timer'],
   settings: ['appearance', 'hotkeys', 'updates', 'system'],
@@ -190,6 +203,24 @@ function upgradeSurface (surface, ids, version) {
   return out;
 }
 
+/**
+ * Holds one side to the limit, leaving the surplus out of the surface entirely so it
+ * goes back to the palette rather than sitting in a list where nothing shows it. An
+ * item that is already on the side keeps its place: the limit is about what fits,
+ * not about reshuffling someone's island the moment the rule arrived.
+ */
+function holdToLimit (ids, sides) {
+  const kept = [];
+  const counts = { right: 0, left: 0 };
+  for (const id of ids) {
+    const side = sides[id] ?? sideOf('compact', id);
+    if (counts[side] >= MAX_PER_SIDE) continue;
+    counts[side] += 1;
+    kept.push(id);
+  }
+  return kept;
+}
+
 /** Every surface of a profile, cleaned and up to date. */
 function normalise (layout) {
   const source = layout ?? {};
@@ -204,11 +235,16 @@ function normalise (layout) {
     out[surface] = upgradeSurface(surface, source[surface], version);
   }
   // The arms are stored per item rather than per surface, so a single `sides` map
-  // covers every surface that has them. Anything else in it — an item from a
-  // surface that was removed, a side that is not a side — goes.
+  // covers every surface that has them. Anything else in it — an item from a surface
+  // that was removed, a side that is not a side — goes. A surface with sides is then
+  // held to the limit, which is what makes the rule absolute rather than a thing the
+  // editor happens to observe.
   for (const [id, side] of Object.entries(source.sides ?? {})) {
     if (side !== 'left' && side !== 'right') continue;
     out.sides[id] = side;
+  }
+  for (const surface of surfaceNames()) {
+    if (SURFACES[surface]?.sides) out[surface] = holdToLimit(out[surface], out.sides);
   }
   // Sizes are per item and per surface, so an item that cannot be drawn at that
   // size any more loses the setting rather than keeping a word nobody can read.
@@ -284,6 +320,27 @@ function fromArms (layout, surface, arms = {}) {
   return next;
 }
 
+/**
+ * Whether a side has room for one more item — or for an item that is already on it,
+ * which only ever moves around within the room it already has.
+ */
+function canPlace (current, surface, id, arm) {
+  const order = arranged(current, surface);
+  if (Array.isArray(order)) return false;
+  const side = arm === 'left' ? 'left' : 'right';
+  return order[side].filter((entry) => entry !== id).length < MAX_PER_SIDE;
+}
+
+/** How full each side is, and how full it may be. */
+function fullness (current, surface) {
+  const order = arranged(current, surface);
+  if (Array.isArray(order)) return null;
+  return {
+    right: { used: order.right.length, max: MAX_PER_SIDE },
+    left: { used: order.left.length, max: MAX_PER_SIDE },
+  };
+}
+
 /** The items a surface has room for that it is not carrying. */
 function available (layout, surface) {
   return itemsOf(surface)
@@ -323,6 +380,13 @@ function change (current, edit = {}) {
   const arm = edit.op === 'side'
     ? (edit.side === 'left' ? 'left' : 'right')
     : (edit.arm === 'left' ? 'left' : 'right');
+
+  // A side with no room is a refusal, not a queue: the arrangement is handed back
+  // exactly as it was. Trimming it here instead would drop whichever item happened
+  // to be past the limit — which, with the arms stored as one list, is as likely to
+  // be the very item being moved as anything else. `canPlace` already ignores the
+  // item being placed, so moving something around within a full side still works.
+  if (!canPlace(clean, surface, edit.id, arm)) return clean;
 
   // An item that moves is lifted out of wherever it was first: leaving a copy
   // behind would put it on both arms, and the arms are read back off one list, so
@@ -396,6 +460,7 @@ function removeProfile (stored, active, name) {
 
 module.exports = {
   SURFACES,
+  MAX_PER_SIDE,
   DEFAULT_LAYOUT,
   DEFAULT_SIDES,
   DEFAULT_SIZES,
@@ -414,6 +479,8 @@ module.exports = {
   remove,
   arranged,
   fromArms,
+  canPlace,
+  fullness,
   change,
   profiles,
   profileName,

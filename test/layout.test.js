@@ -15,17 +15,21 @@ const base = {
   bluetooth: { devices: [] },
 };
 
-test('a fresh arrangement is the one the island shipped with', () => {
+test('a fresh arrangement is three a side, and the rest is in the palette', () => {
   const clean = layout.normalise(null);
   assert.deepStrictEqual(clean.compact, ALL_COMPACT);
   assert.deepStrictEqual(clean.quick, layout.DEFAULT_LAYOUT.quick);
   assert.deepStrictEqual(clean.settings, layout.DEFAULT_LAYOUT.settings);
-  // The arms are where the counting used to put them: everything up to the
-  // charger on the right of the housing, the rest on the left.
   assert.deepStrictEqual(layout.arranged(clean, 'compact'), {
-    right: ['media', 'bluetooth', 'volume', 'mic', 'battery', 'charging'],
-    left: ['meeting', 'clipboard', 'clock', 'airdrop', 'cpu'],
+    right: ['media', 'volume', 'battery'],
+    left: ['clock', 'clipboard', 'bluetooth'],
   });
+  // Nothing is lost by being off the row: it is one drag away.
+  assert.deepStrictEqual(layout.available(clean, 'compact'), ['mic', 'charging', 'meeting', 'airdrop', 'cpu']);
+  assert.strictEqual(layout.available(clean, 'compact').length
+    + layout.arranged(clean, 'compact').right.length
+    + layout.arranged(clean, 'compact').left.length,
+  layout.itemsOf('compact').length);
 });
 
 test('a surface that was never stored falls back, an emptied one does not', () => {
@@ -68,11 +72,11 @@ test('a layout that says nothing about its version has nothing to catch up on', 
 });
 
 test('the charger is an item, so it can be taken out', () => {
-  const without = layout.remove(layout.normalise(null), 'compact', 'charging');
-  assert.deepStrictEqual(layout.arranged(without, 'compact'), {
-    right: ['media', 'bluetooth', 'volume', 'mic', 'battery'],
-    left: ['meeting', 'clipboard', 'clock', 'airdrop', 'cpu'],
-  });
+  // It is off the row by default, and taking out what *is* there makes room for it.
+  const clean = layout.normalise(null);
+  const without = layout.remove(clean, 'compact', 'clock');
+  const withCharge = layout.change(without, { surface: 'compact', id: 'charging', arm: 'left', index: 0 });
+  assert.ok(layout.arranged(withCharge, 'compact').left.includes('charging'));
 });
 
 test('a stale side does not survive', () => {
@@ -85,14 +89,29 @@ test('a stale side does not survive', () => {
 const armsOf = (l) => layout.arranged(l, 'compact');
 
 test('an item can be dropped into a gap on an arm', () => {
-  const moved = layout.change(layout.normalise(null), { surface: 'compact', id: 'cpu', arm: 'right', index: 0 });
+  const roomy = layout.normalise({ compact: ['media', 'volume'], version: layout.LAYOUT_VERSION });
+  const moved = layout.change(roomy, { surface: 'compact', id: 'cpu', arm: 'right', index: 0 });
   assert.deepStrictEqual(armsOf(moved).right[0], 'cpu');
 });
 
 test('an item can cross the housing', () => {
-  const crossed = layout.change(layout.normalise(null), { surface: 'compact', id: 'clock', op: 'side', side: 'right' });
+  // From a row with room on both sides, which is not the default any more.
+  const roomy = layout.normalise({ compact: ['media', 'clock'], version: layout.LAYOUT_VERSION });
+  const crossed = layout.change(roomy, { surface: 'compact', id: 'clock', op: 'side', side: 'right' });
   assert.ok(armsOf(crossed).right.includes('clock'));
   assert.ok(!armsOf(crossed).left.includes('clock'));
+});
+
+test('an empty arm is a place, not a missing one', () => {
+  const allLeft = layout.normalise({
+    compact: ['clock', 'clipboard', 'bluetooth'],
+    sides: Object.fromEntries(['clock', 'clipboard', 'bluetooth'].map((id) => [id, 'left'])),
+    version: layout.LAYOUT_VERSION,
+  });
+  const arms = layout.arranged(allLeft, 'compact');
+  assert.deepStrictEqual(arms.right, []);
+  assert.strictEqual(arms.left.length, 3);
+  assert.strictEqual(layout.canPlace(allLeft, 'compact', 'media', 'right'), true, 'and there is room on it');
 });
 
 test('an item put on the other arm does not stay on both', () => {
@@ -104,22 +123,65 @@ test('an item put on the other arm does not stay on both', () => {
   assert.deepStrictEqual([...arms.right, ...arms.left].length, new Set([...arms.right, ...arms.left]).size);
 });
 
-test('nothing is lost by a long series of moves', () => {
-  let current = layout.normalise(null);
-  const moves = [
+test('nothing is lost while there is room on both sides', () => {
+  // Two a side, so every move below lands: the point of this is that reordering
+  // does not quietly drop things on its own.
+  let current = layout.normalise({ compact: ['media', 'clock', 'volume', 'cpu'], version: layout.LAYOUT_VERSION });
+  const before = armsOf(current);
+  for (const move of [
     { id: 'cpu', arm: 'right', index: 0 },
     { id: 'clock', op: 'side', side: 'right' },
-    { id: 'meeting', op: 'remove' },
-    { id: 'meeting', arm: 'left', index: 0 },
-    { id: 'mic', arm: 'left', index: 0 },
-    { id: 'media', arm: 'left', index: 2 },
-  ];
-  for (const move of moves) current = layout.change(current, { surface: 'compact', ...move });
+    { id: 'media', arm: 'left', index: 1 },
+    { id: 'cpu', arm: 'left', index: 0 },
+  ]) current = layout.change(current, { surface: 'compact', ...move });
   const arms = armsOf(current);
   const every = [...arms.right, ...arms.left];
-  assert.deepStrictEqual(every.length, ALL_COMPACT.length);
+  assert.deepStrictEqual(every.length, 4);
   assert.deepStrictEqual(new Set(every).size, every.length);
-  for (const id of ALL_COMPACT) assert.ok(every.includes(id), `${id} went missing`);
+  assert.notDeepStrictEqual(arms, before, 'and it did move something');
+});
+
+test('a drop onto a full side is refused, and said so rather than done quietly', () => {
+  const full = layout.normalise(null);
+  assert.strictEqual(layout.canPlace(full, 'compact', 'mic', 'right'), false, 'right is full');
+  assert.strictEqual(layout.canPlace(full, 'compact', 'mic', 'left'), false, 'so is left');
+  // An item already on a side may still be moved within it: it is not adding room.
+  assert.strictEqual(layout.canPlace(full, 'compact', 'media', 'right'), true);
+  // And the refusal is real: the arrangement does not change.
+  const tried = layout.change(full, { surface: 'compact', id: 'mic', arm: 'right', index: 0 });
+  assert.deepStrictEqual(armsOf(tried), armsOf(full));
+});
+
+test('one side may hold three and no more, whatever it is asked', () => {
+  let current = layout.normalise({ compact: [], version: layout.LAYOUT_VERSION });
+  for (const [id, arm] of [['media', 'right'], ['volume', 'right'], ['battery', 'right'], ['mic', 'right']]) {
+    current = layout.change(current, { surface: 'compact', id, arm, index: 0 });
+  }
+  assert.deepStrictEqual(armsOf(current).right, ['battery', 'volume', 'media']);
+  assert.deepStrictEqual(armsOf(current).left, []);
+  assert.ok(layout.available(current, 'compact').includes('mic'), 'the fourth went back to the palette');
+});
+
+test('an arrangement from before the rule is trimmed, keeping the first on each side', () => {
+  // This is what happens to a row arranged when a side could hold anything: the
+  // items already on it keep their places and the surplus goes to the palette.
+  // `mic` starts on the left, so it is the fourth item on that side and goes back
+  // to the palette, while the three before it keep their places.
+  const trimmed = layout.normalise({
+    compact: ['media', 'volume', 'battery', 'mic', 'clock', 'clipboard', 'bluetooth', 'airdrop'],
+    version: layout.LAYOUT_VERSION,
+  });
+  assert.deepStrictEqual(armsOf(trimmed), {
+    right: ['media', 'volume', 'battery'],
+    left: ['mic', 'clock', 'clipboard'],
+  });
+  assert.deepStrictEqual(layout.available(trimmed, 'compact'), ['bluetooth', 'charging', 'meeting', 'airdrop', 'cpu']);
+});
+
+test('a surface with no sides has no limit', () => {
+  const clean = layout.normalise(null);
+  assert.strictEqual(layout.fullness(clean, 'quick'), null);
+  assert.deepStrictEqual(layout.arranged(clean, 'quick'), layout.DEFAULT_LAYOUT.quick);
 });
 
 test('crossing to the arm an item is already on changes nothing', () => {
@@ -142,30 +204,20 @@ test('a surface without arms is one list', () => {
   assert.ok(!layout.arranged(gone, 'quick').includes('player'));
 });
 
-test('an empty arm is a place, not a missing one', () => {
-  const allLeft = layout.normalise({
-    compact: ALL_COMPACT,
-    sides: Object.fromEntries(ALL_COMPACT.map((id) => [id, 'left'])),
-  });
-  const arms = layout.arranged(allLeft, 'compact');
-  assert.deepStrictEqual(arms.right, []);
-  assert.strictEqual(arms.left.length, ALL_COMPACT.length);
-});
-
 test('a layout from before the charger existed gains it, and keeps it on disk', () => {
   // This is what the migration in prefs.js does: the old widget list becomes an
   // arrangement dated from before `charging` was an item, which then brings it up
   // to date. Claiming to be current instead would leave an upgrading user without
   // the one thing the island had always shown.
   const migrated = layout.normalise({
-    compact: ['media', 'battery', 'clipboard'],
+    compact: ['media', 'battery', 'clock', 'clipboard'],
     quick: layout.DEFAULT_LAYOUT.quick,
     settings: layout.DEFAULT_LAYOUT.settings,
     version: 1,
   });
   assert.deepStrictEqual(layout.arranged(migrated, 'compact'), {
-    right: ['media', 'battery', 'charging'],
-    left: ['clipboard'],
+    right: ['media', 'battery'],
+    left: ['clock', 'clipboard', 'charging'],
   });
   assert.strictEqual(layout.normalise(migrated).compact.includes('charging'), true, 'and it is idempotent');
 });
@@ -181,6 +233,15 @@ test('an event never takes the island away from a panel the user opened', () => 
   // An activity panel is named `activity:<id>`, and nothing else starts that way.
   assert.strictEqual(activities.shouldPresent('activity:timer-3'), true);
   assert.strictEqual(activities.shouldPresent(undefined), false);
+});
+
+test('the limit is reported per side, so the editor can show it', () => {
+  const full = layout.fullness(layout.normalise(null), 'compact');
+  assert.deepStrictEqual(full, { right: { used: 3, max: 3 }, left: { used: 3, max: 3 } });
+  const roomy = layout.fullness(layout.remove(layout.normalise(null), 'compact', 'volume'), 'compact');
+  assert.deepStrictEqual(roomy.right, { used: 2, max: 3 });
+  // A surface that is one list has no sides, and says so rather than counting one.
+  assert.strictEqual(layout.fullness(layout.normalise(null), 'quick'), null);
 });
 
 test('a widget can be more than one size, and the size is stored', () => {
@@ -222,9 +283,11 @@ test('the charger is an item, so the island can stop saying anything about it', 
 });
 
 test('the palette knows what a surface is not carrying', () => {
-  const thin = layout.remove(layout.normalise(null), 'compact', 'cpu');
-  assert.ok(layout.available(thin, 'compact').includes('cpu'));
-  assert.ok(!layout.available(thin, 'compact').includes('mic'));
+  const thin = layout.remove(layout.normalise(null), 'compact', 'volume');
+  assert.ok(layout.available(thin, 'compact').includes('volume'));
+  assert.ok(!layout.available(thin, 'compact').includes('media'));
+  // Which frees a place on the side it was on.
+  assert.strictEqual(layout.canPlace(thin, 'compact', 'cpu', 'right'), true);
 });
 
 // ---------------------------------------------------------------- profiles

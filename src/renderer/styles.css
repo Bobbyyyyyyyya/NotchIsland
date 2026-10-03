@@ -752,6 +752,25 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
  * the panel has to show.
  */
 .layout-scroll { display: flex; flex-direction: column; gap: 8px; }
+/* How much room each side has, in the title bar: the one number that decides
+   whether a drop will be taken, so it does not have to be hunted for. */
+.layout-count {
+  margin-left: auto;
+  margin-right: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.34);
+  transition: color 0.2s var(--ease);
+}
+.layout-count[data-tight="near"] { color: rgba(255, 159, 10, 0.85); }
+.layout-count[data-tight="full"] { color: var(--red); }
+
+/* A side with no room stops being somewhere to aim at, and says so. */
+.layout-side.full > .layout-arm { border-style: solid; border-color: rgba(255, 69, 58, 0.4); }
+.layout-side.full .layout-side-name { color: rgba(255, 138, 132, 0.8); }
+
 .layout-profiles,
 .layout-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
 .layout-tabs { padding-bottom: 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.09); }
