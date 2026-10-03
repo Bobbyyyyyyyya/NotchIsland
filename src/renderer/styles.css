@@ -769,12 +769,43 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .layout-surface[data-arms="0"] { display: block; }
 .layout-list { display: flex; flex-wrap: wrap; gap: 5px; }
 
+.layout-side {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
 .layout-arm {
   display: flex;
   align-items: center;
   gap: 5px;
   flex: 1;
   min-width: 0;
+  /* A side with nothing on it still has to be somewhere to aim at, so an empty one
+     holds the height of a full item and says what it wants. */
+  min-height: 26px;
+  padding: 2px 4px;
+  border-radius: 9px;
+  border: 1px dashed rgba(255, 255, 255, 0.13);
+}
+/* The side a dragged item is over: the whole bubble lights up, so a drop onto an
+   empty arm is as obvious as a drop into a gap. */
+.layout-side.over > .layout-arm { border-color: var(--blue); background: rgba(10, 132, 255, 0.14); }
+.layout-side-name {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.34);
+}
+.layout-arm-empty {
+  flex: 1;
+  font-size: 9.5px;
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
 }
 /* The housing stands between the arms, so the row reads as one pill with the
    camera cut into it — the same thing the island does. */
@@ -852,7 +883,8 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 /* A gap is the space between two items, and it is where a dropped item lands. */
 .layout-gap {
   flex: none;
-  width: 5px;
+  /* Thin enough to read as a space rather than a control, wide enough to hit. */
+  width: 4px;
   align-self: stretch;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.09);

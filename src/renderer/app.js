@@ -1886,9 +1886,9 @@ function renderSurfaceStage () {
   if (surfaceOf(arranging.surface)?.sides) {
     const arrangedSurface = view.layout?.arranged?.[arranging.surface] ?? {};
     host.replaceChildren(
-      layoutArm('left', arrangedSurface.left ?? []),
+      layoutSide('left', 'Left', arrangedSurface.left ?? []),
       layoutHousing(),
-      layoutArm('right', arrangedSurface.right ?? []),
+      layoutSide('right', 'Right', arrangedSurface.right ?? []),
     );
     return;
   }
@@ -1907,15 +1907,45 @@ function layoutHousing () {
   return node;
 }
 
-function layoutArm (side, ids) {
+/**
+ * One side of the housing: a named bubble with the items on it, and a name to say
+ * what it is even when it is empty.
+ *
+ * The bubble is a drop target in its own right, not just the gaps between its
+ * items. That is the whole reason it is here: an arm with nothing on it was two
+ * thin lines with nothing to aim at, so the way to put something on the other side
+ * of the housing was to move something there first. Now you drag it onto the side
+ * you want, whether or not anything is on it yet.
+ */
+function layoutSide (side, label, ids) {
   const node = document.createElement('div');
-  node.className = 'layout-arm';
+  node.className = 'layout-side';
   node.dataset.side = side;
-  // A gap at each end as well: there has to be somewhere to put an item without
-  // having to aim between two others.
-  node.append(layoutGap(side, 0));
-  for (const id of ids) node.append(layoutSlot(id));
-  node.append(layoutGap(side, ids.length));
+
+  const arm = document.createElement('div');
+  arm.className = 'layout-arm';
+  // A gap between every pair of items and at both ends, so an item can land
+  // anywhere in the side rather than only at its edges. Each one knows its own
+  // index, which is what the drop sends.
+  arm.append(layoutGap(side, 0));
+  ids.forEach((id, at) => {
+    arm.append(layoutSlot(id));
+    arm.append(layoutGap(side, at + 1));
+  });
+  if (!ids.length) arm.append(layoutEmpty('Drop here'));
+
+  const name = document.createElement('div');
+  name.className = 'layout-side-name';
+  name.textContent = ids.length ? `${label} · ${ids.length}` : label;
+
+  node.append(arm, name);
+  return node;
+}
+
+function layoutEmpty (message) {
+  const node = document.createElement('div');
+  node.className = 'layout-arm-empty';
+  node.textContent = message;
   return node;
 }
 
@@ -2036,14 +2066,14 @@ function bindArrangeDrag () {
     item.classList.remove('lifting');
     root.classList.remove('arranging');
     el('arrangeGhost').hidden = true;
-    for (const node of root.querySelectorAll('.layout-gap.over')) node.classList.remove('over');
+    for (const node of root.querySelectorAll('.layout-gap.over, .layout-side.over')) node.classList.remove('over');
     if (!live) {
       // A press that never travelled is a tap, and on an item that can be more
       // than one size that is what it means.
       cycleWidgetSize(item.dataset.id);
       return;
     }
-    const target = layoutGapUnder(event.clientX, event.clientY);
+    const target = layoutTargetUnder(event.clientX, event.clientY);
     if (target) dropArranged(item.dataset.id, target);
   };
 
@@ -2056,15 +2086,24 @@ function moveArrangeDrag (event) {
   ghost.style.left = `${event.clientX}px`;
   ghost.style.top = `${event.clientY}px`;
   // The gap the item would land in lights up, so the drop is never a guess.
-  const target = layoutGapUnder(event.clientX, event.clientY);
+  const target = layoutTargetUnder(event.clientX, event.clientY);
   for (const node of root.querySelectorAll('.layout-gap')) node.classList.toggle('over', node === target);
+  for (const side of root.querySelectorAll('.layout-side')) side.classList.toggle('over', side.contains(target));
 }
 
 /**
- * The gap the pointer is over. A gap is a thin line, so it gets a generous
- * radius: the hand is aiming at the space between two things, not at a line.
+ * Where a dragged item would land.
+ *
+ * A gap first, because it says exactly where the item goes between two others. A
+ * gap is a thin line, so it gets a generous radius: the hand is aiming at the
+ * space between two things, not at a line.
+ *
+ * Failing that — and on a surface with no arms at all — whatever side the pointer
+ * is over, which lands the item at the end of that side. That is what makes an
+ * empty side work: without it, the only way to put something on the other side of
+ * the housing was to move something there first.
  */
-function layoutGapUnder (x, y) {
+function layoutTargetUnder (x, y) {
   let best = null;
   let bestDistance = Infinity;
   for (const node of root.querySelectorAll('.layout-gap')) {
@@ -2075,12 +2114,33 @@ function layoutGapUnder (x, y) {
       bestDistance = distance;
     }
   }
-  return best;
+  if (best) return best;
+
+  for (const side of root.querySelectorAll('.layout-side')) {
+    const box = side.getBoundingClientRect();
+    if (x < box.left - 8 || x > box.right + 8 || y < box.top - 8 || y > box.bottom + 8) continue;
+    // The end of the side, so an item dropped on a half-full arm lands after what
+    // is already there rather than in a gap nobody aimed at.
+    return bestGapFor(side);
+  }
+
+  for (const row of root.querySelectorAll('.layout-list')) {
+    const box = row.getBoundingClientRect();
+    if (x < box.left - 8 || x > box.right + 8 || y < box.top - 8 || y > box.bottom + 8) continue;
+    return row.querySelector('.layout-gap') ?? { dataset: { index: String(row.childElementCount) } };
+  }
+  return null;
+}
+
+function bestGapFor (side) {
+  const gaps = side.querySelectorAll('.layout-gap');
+  return gaps[gaps.length - 1] ?? null;
 }
 
 function dropArranged (id, target) {
+  if (!target?.dataset) return;
   const change = { surface: arranging.surface, id, index: Number(target.dataset.index) };
-  // A gap belongs to the arm it sits in, so dropping one there also says which
+  // A gap belongs to the side it sits in, so dropping one there also says which
   // side of the housing the item ends up on.
   if (target.dataset.side) change.arm = target.dataset.side;
   api.action('layout.set', { change });

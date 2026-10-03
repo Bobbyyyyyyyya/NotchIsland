@@ -24,8 +24,12 @@ all in the notch, with F7–F12 working the way they do on Apple hardware.
 | CPU | load |
 
 Every widget in that row is yours to move, add or remove: the row is drawn as two
-arms either side of the housing and dragged into place from the Arrange panel
-(`⌘⌥L`), along with the quick controls and the order of the Settings sections. A
+named sides either side of the housing — *Left* and *Right* — and widgets are dragged
+onto the side you want them on, or into a gap between two others to put them
+somewhere in the middle. Both sides are always there, so moving something across is
+one drag whether or not either side has anything on it yet. The Arrange panel
+(`⌘⌥L`) does the same for the quick controls and the order of the Settings
+sections. A
 widget that can be more than one size — music is — says so with a badge, and a tap
 steps it through. A profile is a whole set of those at once, so "office" and
 "evening" are one click apart in the tray.
