@@ -11,6 +11,7 @@ const { HelperBridge } = require('./helper');
 const { Hotkeys } = require('./hotkeys');
 const { Island } = require('./island');
 const { MediaRemoteBridge } = require('./media-remote');
+const { copyState, trimForPush } = require('./snapshot');
 const { Updater } = require('./updater');
 
 /**
@@ -981,7 +982,7 @@ function kindOf (text) {
 }
 
 function snapshot () {
-  return {
+  return copyState({
     ...state,
     // The renderer reads this back: while `--shot` composes a scene the pointer
     // must not fold the panel it just opened. A cursor resting on the notch makes
@@ -991,24 +992,15 @@ function snapshot () {
     prefs: prefs.load(),
     geometry: island.geometry(),
     helper: helper.status(),
-  };
+  });
 }
-
-/** Biggest payload we are willing to hand to the renderer. */
-const MAX_PUSH_BYTES = 900_000;
 
 let lastPush = '';
 
 function push ({ announce = true } = {}) {
   const fresh = refreshActivities();
-  const payload = snapshot();
-  let encoded = JSON.stringify(payload);
-  if (Buffer.byteLength(encoded) > MAX_PUSH_BYTES) {
-    // Artwork is by far the heaviest field; drop it rather than fail the send.
-    payload.media.artwork = null;
-    payload.clipboard.items = payload.clipboard.items.slice(0, 5);
-    encoded = JSON.stringify(payload);
-  }
+  const payload = trimForPush(snapshot());
+  const encoded = JSON.stringify(payload);
   // The helper polls a few things several times a minute; re-rendering an
   // unchanged island is pure waste.
   if (encoded === lastPush) return;
