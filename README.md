@@ -245,6 +245,13 @@ installed by the updater itself are not quarantined and do not have that problem
 - The app is a menu bar app (`LSUIElement`), so it has no Dock icon; the tray
   icon opens a menu that lists every panel — quick controls, battery, clock and
   the rest — alongside the demo actions and the preferences.
+- Album art comes from MediaRemote, which loads a cover only for the application
+  it has in front: a player running in the background behind a browser may never
+  get one at all. MediaRemote also unloads the image and loads it again a moment
+  later, so a frame arriving without a cover says nothing about the song and the
+  one on screen is kept until a *different* song arrives. Only the next song is
+  allowed to take it away, since a stale sleeve under a new title is worse than
+  no sleeve.
 - Display brightness control is not included: the private CoreGraphics entry
   points Apple used to expose (`IOFFramebufferGetLight`) are gone on current
   macOS, and `F1`/`F2` already work system wide.
@@ -257,8 +264,10 @@ src/main/island.js     overlay window, notch anchoring, spring animation
 src/main/notch.js      camera housing detection through AppKit
 src/main/hotkeys.js    F7–F12 and the fallback chains
 src/main/activities.js live activities: timers, media, mic, Bluetooth, charging, updates
+src/main/artwork.js    which song the cover on screen belongs to
 src/main/helper.js     builds and supervises the Objective-C bridge
 src/main/updater.js    electron-updater behind one plain status object
+src/main/snapshot.js   the payload the renderer is handed, and what a trim may cost
 src/main/prefs.js      persisted preferences
 src/renderer/app.js    island state machine, widgets, panels
 src/renderer/styles.css

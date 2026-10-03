@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const activities = require('./activities');
 const prefs = require('./prefs');
+const { TrackCover } = require('./artwork');
 const { HelperBridge } = require('./helper');
 const { Hotkeys } = require('./hotkeys');
 const { Island } = require('./island');
@@ -33,6 +34,9 @@ const mediaRemote = new MediaRemoteBridge();
 const island = new Island(prefs);
 const hotkeys = new Hotkeys(handleHotkey);
 const updater = new Updater(prefs);
+
+/** The cover on screen, and the song it belongs to. */
+const cover = new TrackCover();
 
 /** The activity id the update owns; it never retires on its own. */
 const UPDATE_ACTIVITY = 'update';
@@ -837,13 +841,17 @@ function onHelperEvent (message) {
       // The helper keeps reporting an empty feed because mediaremoted refuses
       // it. While the adapter is up that is noise, and it would clear the song.
       if (message.via !== 'adapter' && mediaRemote.available) break;
+      if (message.empty) cover.reset();
       state.media = {
         title: message.title ?? '',
         artist: message.artist ?? '',
         album: message.album ?? '',
-        // The helper always sends the key: a cover it no longer has has to
-        // clear the one on screen instead of leaving the previous track's.
-        artwork: message.artworkData || null,
+        // A frame without a cover is not a song without one. MediaRemote sends the
+        // artwork on its own schedule and takes it away again for a moment while
+        // the item stays the same, so only the next song is allowed to take the
+        // cover on screen away — otherwise a track that does have one spends most
+        // of its length as a music note.
+        artwork: message.empty ? null : cover.take(message),
         duration: message.duration ?? 0,
         elapsed: message.elapsed ?? 0,
         rate: message.rate ?? 0,
@@ -852,7 +860,6 @@ function onHelperEvent (message) {
         preferredApp: message.preferredApp ?? null,
         controlled: state.media.controlled,
       };
-      if (message.empty) state.media = { ...state.media, title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0 };
       break;
     case 'volume':
       state.volume = { value: message.value, muted: message.muted };
