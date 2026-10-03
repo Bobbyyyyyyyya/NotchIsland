@@ -2180,7 +2180,11 @@ function sideHasRoom (side, id) {
   const limit = view.layout?.limit;
   if (!limit) return true;
   const arm = side.querySelector('.layout-arm');
-  const carried = arm ? arm.querySelectorAll('.layout-item').filter((item) => item.dataset.id !== id).length : 0;
+  // `querySelectorAll` hands back a NodeList, which has no `filter` — and calling it
+  // one throws on every drag, which is how a rule about room became a crash.
+  const carried = arm
+    ? Array.from(arm.querySelectorAll('.layout-item')).filter((item) => item.dataset.id !== id).length
+    : 0;
   return carried < limit;
 }
 
