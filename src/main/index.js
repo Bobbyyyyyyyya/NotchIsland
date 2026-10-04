@@ -665,7 +665,15 @@ function applyPreferences () {
   // user arranged has to be on the state itself: it is what decides whether the
   // charger says anything at all.
   state.compact = compactRow();
-  app.setLoginItemSettings({ openAtLogin: prefs.get('launchAtLogin') === true, openAsHidden: true });
+  // Login items only exist for a packaged app: in dev macOS refuses the call
+  // (Operation not permitted) and there is nothing to register into anyway.
+  if (app.isPackaged) {
+    try {
+      app.setLoginItemSettings({ openAtLogin: prefs.get('launchAtLogin') === true, openAsHidden: true });
+    } catch (error) {
+      console.error('[prefs] could not update the login item:', error.message);
+    }
+  }
   refreshTrayMenu();
   push();
 }
