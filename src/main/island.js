@@ -45,6 +45,9 @@ class Island {
     this.pointerInside = false;
     this.hovering = false;
     this.requestedWidth = 0;
+    /** How far the window sits off the housing centre, so an asymmetric row
+        keeps its middle on the housing. The renderer owns it. */
+    this._shift = 0;
     this._tween = null;
     this._springs = null;
     this._tweenTarget = null;
@@ -150,11 +153,12 @@ class Island {
       : bounds.x + bounds.width / 2;
   }
 
-  /** Window origin for a given island size, centred on the camera housing. */
+  /** Window origin for a given island size: centred on the camera housing,
+      plus the row's shift, so an asymmetric row keeps its middle there. */
   _bounds (width, height) {
     const centre = this._centreX();
     return {
-      x: Math.round(centre - width / 2),
+      x: Math.round(centre - width / 2 + (this._shift ?? 0)),
       y: (this.display?.bounds ?? screen.getPrimaryDisplay().bounds).y,
       width: Math.round(width),
       height: Math.round(height + SHADOW_ROOM),
@@ -164,11 +168,12 @@ class Island {
   /**
    * The frame for a size mid-tween. `x` is derived from the width that is being
    * sprung, so the island grows outwards from the notch on every frame instead
-   * of snapping to its final edge on the first one.
+   * of snapping to its final edge on the first one. The shift rides along, so
+   * the row's middle stays on the housing while the width springs.
    */
   _centered (width, height, radius, y) {
     return {
-      x: Math.round(this._centreX() - width / 2),
+      x: Math.round(this._centreX() - width / 2 + (this._shift ?? 0)),
       y,
       width: Math.round(width),
       height: Math.round(height),
@@ -189,9 +194,13 @@ class Island {
     return Math.min(Math.max(workArea.width * 0.9, 400), 1200);
   }
 
-  resize (requestedWidth, { height, animate = true } = {}) {
+  resize (requestedWidth, { height, animate = true, shift } = {}) {
     if (requestedWidth) this.requestedWidth = requestedWidth;
     const expanded = this.state !== 'compact';
+    // An open panel is centred; only the compact row ever shifts. Anything that
+    // resizes without saying (hover, drag) keeps the shift it already has.
+    if (expanded) this._shift = 0;
+    else if (shift !== undefined) this._shift = shift;
     const minimum = this.notch.detected ? this.notch.width : 200;
     const fallback = expanded ? this.dynamicMaxWidth : minimum;
     const width = Math.round(Math.min(Math.max(this.requestedWidth || fallback, minimum), this.dynamicMaxWidth));

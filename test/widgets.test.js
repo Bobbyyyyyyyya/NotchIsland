@@ -308,9 +308,8 @@ test('a widget with nothing to say says nothing', () => {
   assert.ok(shows(busy, 'charging'), 'and once the charger is in');
 });
 
-test('a paused song is still a song', () => {
+test('a paused song disappears', () => {
   const paused = { ...base, media: { ...base.media, rate: 0, playbackState: 0 } };
   const widget = shows(paused, 'media');
-  assert.ok(widget, 'it stays in the row, only quiet');
-  assert.ok(widget.className.includes('dim'), 'and says so by dimming');
+  assert.strictEqual(widget, null, 'it disappears from the row when paused');
 });

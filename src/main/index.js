@@ -949,7 +949,7 @@ function cycleDevice (isInput) {
 ipcMain.handle('state:request', () => snapshot());
 ipcMain.handle('mods:list', () => mods.load());
 ipcMain.on('action', (_event, { name, args }) => run(name, args ?? {}));
-ipcMain.on('island:request-size', (_event, { width, height }) => island.resize(width, { height }));
+  ipcMain.on('island:request-size', (_event, { width, height, shift }) => island.resize(width, { height, shift }));
 ipcMain.on('island:pointer', (_event, { inside }) => {
   island.setInteractive(inside);
   island.setHovering(inside && island.state === 'compact');

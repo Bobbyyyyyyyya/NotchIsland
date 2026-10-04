@@ -34,6 +34,7 @@ const view = {
   tightBubbles: 0,
   widgetSignature: '',
   appliedState: 'compact',
+  ax: 0,
   connectedBluetooth: null,
   bluetoothHello: null,
   sections: {},
@@ -145,10 +146,10 @@ const WIDGETS = {
     label: 'Music',
     render (state) {
       const { title, artwork, playbackState } = state.media;
-      if (!title && playbackState <= 0) return null;
+      if (playbackState !== 1) return null;
       const node = document.createElement('button');
       const size = widgetSize('media');
-      node.className = `widget${playbackState <= 0 ? ' dim' : ''}${size === 'small' ? ' small' : ''}`;
+      node.className = `widget${size === 'small' ? ' small' : ''}`;
       node.dataset.panelOpen = 'player';
       // Big: album art inside a ring of playback progress — one round thing, no
       // label, because the island names the song by its cover. Small: the glyph on
@@ -200,12 +201,10 @@ const WIDGETS = {
     label: 'Volume',
     render (state) {
       const node = document.createElement('button');
-      node.className = `widget readout${state.volume.muted ? ' dim' : ''}`;
+      node.className = 'widget readout';
       node.dataset.panelOpen = 'volume';
       const level = state.volume.muted ? 0 : state.volume.value;
       node.insertAdjacentHTML('beforeend', icon(level > 0.5 ? 'volumeHigh' : level > 0.02 ? 'volumeLow' : 'volumeMute', { size: 14 }));
-      // A mute is not an alarm: the number just reads 0, the way the label
-      // does. The red alarm tint is saved for things worth a warning.
       const label = document.createElement('span');
       label.className = 'label';
       // The battery and the CPU both wear a %, so the volume does too: a bare
@@ -265,6 +264,9 @@ const WIDGETS = {
         .filter((device) => device.connected && device.battery >= 0)
         .sort((a, b) => a.battery - b.battery)[0];
 
+      // Any connected device, even without battery (e.g. Magic Mouse)
+      const anyConnected = devices.find((device) => device.connected);
+
       // A device that was not connected a moment ago is the one worth greeting,
       // whatever its battery is doing. The first render only learns what is
       // already there: nothing says hello to what was paired before launch.
@@ -304,7 +306,7 @@ const WIDGETS = {
         label.textContent = `${Math.round(tracked.battery * 100)}%`;
         node.append(label);
       }
-      node.title = tracked ? `${tracked.name} ${Math.round(tracked.battery * 100)}%` : 'No accessory connected';
+      node.title = tracked ? `${tracked.name} ${Math.round(tracked.battery * 100)}%` : anyConnected ? anyConnected.name : 'No accessory connected';
       // An Apple accessory that just connected gets a little hello: the icon
       // ripples once, the way a device acknowledges a pairing. Only when the
       // connected device actually changes, not on every battery tick.
@@ -312,6 +314,7 @@ const WIDGETS = {
         view.lastBluetooth = tracked.address;
         node.classList.add('bt-connect');
       }
+      if (!anyConnected) return null;
       if (!tracked) node.classList.add('dim');
       return node;
     },
@@ -321,15 +324,12 @@ const WIDGETS = {
     label: 'Meeting',
     render (state) {
       const active = state.input.active;
+      if (!active.length) return null;
       const node = document.createElement('button');
-      node.className = `widget${active.length ? ' alert' : ' dim'}`;
+      node.className = 'widget alert';
       node.dataset.panelOpen = 'mic';
-      if (active.length) {
-        node.insertAdjacentHTML('beforeend', '<span class="pulse"></span>');
-      } else {
-        node.insertAdjacentHTML('beforeend', icon('mic', { size: 14 }));
-      }
-      node.title = active.length ? active.join(', ') : 'No active meeting';
+      node.insertAdjacentHTML('beforeend', '<span class="pulse"></span>');
+      node.title = active.join(', ');
       return node;
     },
   },
@@ -1584,11 +1584,9 @@ function compactWidth (keep = null) {
   const EDGE = 4; // breathing room between the widgets and the island's edge
   const left = armContentWidth(el('armLeft'), keep);
   const right = armContentWidth(el('armRight'), keep);
-  // The island is centred on the housing, so each arm only ever gets half of
-  // (width - notch). Both arms must fit their half, which means the island has
-  // to be as wide as the *larger* arm — not the sum of the two, which is what
-  // used to let a wide bubble spill out past the island's edge.
-  return EDGE * 2 + gapWidth() + 2 * Math.max(left, right);
+  // Each arm grows independently from the housing. The island is as wide as
+  // the sum of both arms plus the notch and edges — not forced symmetric.
+  return EDGE * 2 + gapWidth() + left + right;
 }
 
 /** Natural height of the open panel, measured from its last child. */
@@ -1633,10 +1631,20 @@ function syncPanelWidth () {
  * Once compact, the row is rebuilt on every push, so this first restores the full
  * labels and asks the question again. That avoids a latch that would keep a
  * percentage hidden after there is room for it again.
+ *
+ * Tightening is per arm: the crowded arm goes wordless first, and the other arm
+ * only follows when there is still no room. A full arm never takes the labels
+ * off the other one.
  */
 function tightenWidgetLabels () {
-  root.classList.remove('widgets-tight');
-  root.classList.toggle('widgets-tight', compactWidth() > view.maxWidth);
+  const left = el('armLeft');
+  const right = el('armRight');
+  left.classList.remove('arm-tight');
+  right.classList.remove('arm-tight');
+  if (compactWidth() <= view.maxWidth) return;
+  const [first, second] = [left, right].sort((a, b) => armContentWidth(b) - armContentWidth(a));
+  first.classList.add('arm-tight');
+  if (compactWidth() > view.maxWidth) second.classList.add('arm-tight');
 }
 
 function requestSize () {
@@ -1652,8 +1660,11 @@ function requestSize () {
     // be used here: it reports the box height, which is whatever the island
     // happens to be right now, so the panel would never shrink again.
     root.classList.remove('bubbles-tight');
-    root.classList.remove('widgets-tight');
-    ask({ width: expandedWidth(), height: panelHeight() });
+    el('armLeft').classList.remove('arm-tight');
+    el('armRight').classList.remove('arm-tight');
+    view.ax = 0;
+    setVar('--ax', '0px');
+    ask({ width: expandedWidth(), height: panelHeight(), shift: 0 });
     return;
   }
 
@@ -1710,17 +1721,28 @@ function requestSize () {
     candidate.remove();
   }
 
+  const leftW = armContentWidth(left);
+  const rightW = armContentWidth(right);
+  // The window stays centred on the housing, so the row recentres itself: its
+  // anchor rides half the arms' difference off the window centre, and an
+  // asymmetric row no longer pushes its longer arm past the island's edge.
+  view.ax = Math.round((leftW - rightW) / 2);
+  setVar('--ax', `${view.ax}px`);
   const need = Math.max(compactWidth(), view.notch.width || 0);
   // Kept for the --shot report, which is how the layout gets reviewed.
   view.widths = {
-    left: armContentWidth(left),
-    right: armContentWidth(right),
+    left: leftW,
+    right: rightW,
+    ax: view.ax,
     kids: `${left.children.length}/${right.children.length}`,
     need: Math.round(need),
     island: view.frame.width,
     max: view.maxWidth,
   };
-  ask({ width: need });
+  // The window follows the row: shifting it by the arms' half-difference puts
+  // the row's middle back on the housing, so a widget next to the notch stays
+  // next to the notch however asymmetric the arms get.
+  ask({ width: need, shift: -view.ax });
 }
 
 // ---------------------------------------------------------------- panels
@@ -2423,7 +2445,9 @@ function isInteractiveAt (x, y) {
     if (y > bandHeight()) return true; // panel area
     if (view.state !== 'compact') return true; // collapse button is in the band when expanded
     const gap = gapWidth() / 2;
-    const centre = view.frame.width / 2;
+    // The row recentres itself when its arms differ, so the click-through hole
+    // follows the anchor rather than the window centre.
+    const centre = view.frame.width / 2 + (view.ax ?? 0);
     return Math.abs(x - centre) > gap;
 }
 
@@ -2486,7 +2510,7 @@ setInterval(() => {
   if (el('clipboardList').childElementCount) renderClipboard(view.snapshot);
 }, 10_000);
 
-loadMods().finally(() => api.getState()).then((snapshot) => {
+loadMods().then(() => api.getState()).then((snapshot) => {
   render(snapshot);
   // A frame may already have arrived while the page was loading; it is newer
   // than this snapshot, so it wins.

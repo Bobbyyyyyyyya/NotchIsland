@@ -3,6 +3,9 @@
   --island-h: 32px;
   --band: 38px;
   --notch-w: 0px;
+  /* How far the row's anchor sits off the window centre, so an asymmetric row
+     stays centred instead of pushing its longer arm past the island's edge. */
+  --ax: 0px;
   --radius: 16px;
   --pad: 11px;
   --muted: rgba(255, 255, 255, 0.52);
@@ -476,9 +479,10 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   transition: opacity 0.26s linear;
 }
 
-/* Both arms are pinned to the edges of the housing and grow away from it, so
-   the widgets always sit right next to the camera cut-out no matter how wide
-   the island gets. */
+/* Both arms grow away from a shared anchor next to the housing, so the widgets
+   always sit right next to the camera cut-out no matter how wide the island
+   gets. The anchor rides `--ax` off the window centre, which keeps an
+   asymmetric row centred instead of clipping its longer arm. */
 .arm {
   position: absolute;
   top: 0;
@@ -490,14 +494,14 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   transition: opacity 0.14s linear;
 }
 .arm > * { flex: 0 0 auto; }
-.arm.left { right: calc(50% + var(--notch-w) / 2); }
-.arm.right { left: calc(50% + var(--notch-w) / 2); }
+.arm.left { right: calc(50% - var(--ax) + var(--notch-w) / 2); }
+.arm.right { left: calc(50% + var(--ax) + var(--notch-w) / 2); }
 
 .notch-gap {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
+  left: calc(50% + var(--ax));
   width: var(--notch-w);
   transform: translateX(-50%);
 }
@@ -1455,10 +1459,11 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
    clipped: the event stays, its label does not. */
 #island.bubbles-tight .bubble .label { display: none; }
 
-/* Once the row is too full, words go first, even from widgets. Battery remains
-   readable because that is the point of keeping the widget in the row. */
-#island.widgets-tight .bubble .label,
-#island.widgets-tight .widget.readout:not([data-widget="battery"]) .label { display: none; }
+/* Once an arm is too full, words go first, even from widgets. Battery remains
+   readable because that is the point of keeping the widget in the row. The
+   tightening is per arm, so a crowded arm never silences the other one. */
+.arm.arm-tight .bubble .label,
+.arm.arm-tight .widget.readout:not([data-widget="battery"]) .label { display: none; }
 
 #island.bubbles-tight .bubble { padding: 0 9px; gap: 5px; }
 #island.bubbles-tight .bubble .mini-bar { width: 34px; }
