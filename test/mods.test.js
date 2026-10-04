@@ -124,3 +124,62 @@ test('the settings surface carries the mods section', () => {
   assert.ok(layout.DEFAULT_LAYOUT.settings.includes('mods'));
   assert.ok(layout.normalise(null).settings.includes('mods'));
 });
+
+test('a layout from before the mods section existed gains it back', () => {
+  // The switch for mods cannot be arranged into a layout that does not have the
+  // section, and a section that is not arranged is detached — so a layout written
+  // before mods existed would have no way to turn a mod on again.
+  const Module = require('node:module');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mods-migrate-'));
+  fs.writeFileSync(path.join(dir, 'preferences.json'), JSON.stringify({
+    version: 2,
+    layout: {
+      version: 2,
+      compact: ['media', 'volume', 'battery', 'clock', 'clipboard', 'bluetooth'],
+      quick: ['volume', 'mic'],
+      settings: ['appearance', 'hotkeys', 'updates', 'system'],
+    },
+  }, null, 2));
+  const real = Module.prototype.require;
+  Module.prototype.require = function (id) {
+    if (id === 'electron') return { app: { getPath: () => dir } };
+    return real.apply(this, arguments);
+  };
+  delete require.cache[require.resolve('../src/main/prefs')];
+  const prefs = require('../src/main/prefs');
+  const loaded = prefs.load();
+  assert.strictEqual(loaded.version, 3, 'the file is brought up to date');
+  assert.ok(layout.normalise(loaded.layout).settings.includes('mods'),
+    'and the switch is back where it can be reached');
+  Module.prototype.require = real;
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ------------------------------------------------------- the boundary
+
+test('the page allows a mod to run and nothing else', () => {
+  // A mod is code, so it has to run. The question is what running it allows, and the
+  // answer is in the content security policy: a blob the app made, and no eval, no
+  // inline, no network.
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'index.html'), 'utf8');
+  const csp = /content="([^"]+)"/.exec(html)[1];
+  assert.match(csp, /script-src 'self' blob:/, 'a blob the app made is allowed');
+  assert.ok(!csp.includes('unsafe-eval'), 'eval is not');
+  assert.ok(!csp.includes('unsafe-inline'), 'and neither is an inline script');
+  assert.ok(!csp.includes('connect-src'), 'and there is no network to reach');
+});
+
+test('a mod is loaded as a module, not eval’d', () => {
+  // eval would need unsafe-eval in the policy, which is the one thing that lets any
+  // string become code. A blob URL is the app's own code in a URL the app made.
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const loader = source.slice(source.indexOf('async function loadMods'), source.indexOf('// Expose a tiny surface'));
+  assert.ok(loader.includes('createObjectURL'), 'it makes a blob');
+  assert.ok(loader.includes('await import(url)'), 'and imports it as a module');
+  assert.ok(!loader.includes('eval('), 'and never evals');
+  // A module cannot import anything, which is the boundary doing its job.
+  assert.match(loader, /type: 'text\/javascript'/);
+});

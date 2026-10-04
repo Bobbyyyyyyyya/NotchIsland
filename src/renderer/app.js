@@ -1013,6 +1013,10 @@ function renderSettings (state) {
  */
 function renderMods (state) {
   const list = el('modList');
+  // A section the arrangement leaves out is detached rather than hidden, so the switch
+  // is gone with it. Drawing it anyway would put a control on an island that has no
+  // panel to open — and would throw on the first push after the section was moved out.
+  if (!list) return;
   const switches = state.prefs.mods ?? {};
   if (!modList.length) {
     const note = document.createElement('div');
@@ -2550,9 +2554,19 @@ async function loadMods () {
   }
   for (const file of files) {
     try {
-      // Indirect eval, so the mod runs in the page's global scope and finds
-      // `window.islandMod` the way any other script would.
-      (0, eval)(file.source);
+      // A mod is loaded as a module from a blob rather than eval'd, because the page's
+      // content security policy does not allow eval and a mod is not allowed to ask for
+      // it. A blob is the narrowest thing that runs: the code is the app's own, in a URL
+      // the app made, and it carries no origin of its own to reach back to.
+      //
+      // A module rather than a script tag, so a mod that tried to import something would
+      // fail on the import rather than on something it reached by accident.
+      const url = URL.createObjectURL(new Blob([file.source], { type: 'text/javascript' }));
+      try {
+        await import(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
     } catch (error) {
       console.error(`[mods] ${file.name} did not load:`, error.message);
     }

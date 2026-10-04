@@ -70,6 +70,7 @@ function load () {
     cached = structuredClone(DEFAULTS);
   }
   if (migrate(cached)) write(cached);
+  if (migrateMods(cached)) write(cached);
   return cached;
 }
 
@@ -98,6 +99,24 @@ function migrate (prefs) {
   prefs.layout = layout.normalise(prefs.layout);
   prefs.version = 2;
   delete prefs.widgets;
+  return true;
+}
+
+/**
+ * The mods section did not exist when a layout was written, so a layout from before it
+ * has no switch for mods anywhere — and the only way to get one back would be to
+ * hand-edit a preferences file. This is a migration rather than a rule about layouts:
+ * once a layout has been brought up to date, the user's arrangement of it is respected.
+ */
+function migrateMods (prefs) {
+  if (prefs.version >= 3) return false;
+  const settings = layout.normalise(prefs.layout).settings;
+  if (settings.includes('mods')) {
+    prefs.version = 3;
+    return true;
+  }
+  prefs.layout = layout.normalise({ ...prefs.layout, settings: [...settings, 'mods'] });
+  prefs.version = 3;
   return true;
 }
 
@@ -189,6 +208,7 @@ module.exports = {
   save,
   file,
   migrate,
+  migrateMods,
   layoutProfiles,
   setLayout,
   useProfile,
