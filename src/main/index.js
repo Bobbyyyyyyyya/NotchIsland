@@ -156,6 +156,10 @@ async function selftest () {
   const results = [];
   const check = (name, ok, detail = '') => results.push({ name, ok: Boolean(ok), detail });
 
+  // The selftest opens panels on purpose, which a lock would refuse: it needs
+  // full control, so it starts unlocked.
+  if (prefs.get('island.locked') === true) prefs.save({ island: { locked: false } });
+
   const frameOf = () => ({ ...island.frame });
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -729,6 +733,9 @@ function refreshActivities () {
  * a call. It folds back to the idle pill unless the pointer is resting on it.
  */
 function presentActivity (id) {
+  // Locked means compact: the event is still recorded — its bubble sits in the
+  // row — but the island never opens for it on its own.
+  if (prefs.get('island.locked') === true) return;
   const activity = state.activities.find((entry) => entry.id === id);
   if (!activity) return;
   if (!activities.shouldPresent(island.state)) return;
@@ -844,6 +851,13 @@ const actions = {
   },
 
   'panel.open': ({ state: panel }) => {
+    // Locked means compact: folding is always allowed, opening never is. The
+    // renderer guards its own clicks the same way; this is the backstop for the
+    // hotkeys, the tray and anything else that asks.
+    if (panel !== 'compact' && prefs.get('island.locked') === true) {
+      island.send('toast', { message: 'Locked — long-press to unlock' });
+      return;
+    }
     island.setState(panel === 'compact' ? 'compact' : panel);
     island.resize();
   },
@@ -851,6 +865,15 @@ const actions = {
   // fold-away chevron both funnel through here.
   'close': () => run('panel.open', { state: 'compact' }),
   'island.toggle': () => toggleIsland(),
+  // A held press toggles the lock: locked means compact, whatever asks, until
+  // it is toggled back. Locking folds whatever is open; unlocking opens nothing.
+  'island.lock': () => {
+    const locked = prefs.get('island.locked') !== true;
+    prefs.save({ island: { locked } });
+    applyPreferences();
+    if (locked) run('panel.open', { state: 'compact' });
+    island.send('toast', { message: locked ? 'Locked — long-press to unlock' : 'Unlocked' });
+  },
 
   'prefs.set': ({ patch }) => {
     prefs.save(patch);
@@ -1226,6 +1249,12 @@ tray.setContextMenu(Menu.buildFromTemplate([
       type: 'checkbox',
       checked: prefs.get('island.hoverToExpand') !== false,
       click: (item) => run('prefs.set', { patch: { island: { hoverToExpand: item.checked } } }),
+    },
+    {
+      label: 'Lock the island',
+      type: 'checkbox',
+      checked: prefs.get('island.locked') === true,
+      click: () => run('island.lock', {}),
     },
     {
       label: 'Fill the notch (compact shape)',

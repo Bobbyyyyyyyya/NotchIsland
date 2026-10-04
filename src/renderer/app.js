@@ -35,6 +35,7 @@ const view = {
   widgetSignature: '',
   appliedState: 'compact',
   ax: 0,
+  locked: false,
   connectedBluetooth: null,
   bluetoothHello: null,
   sections: {},
@@ -690,6 +691,10 @@ function render (snapshot) {
   view.maxWidth = snapshot.layout?.maxWidth ?? 560;
   view.style = snapshot.prefs.island.style;
   view.hoverToExpand = snapshot.prefs.island.hoverToExpand;
+  view.locked = snapshot.prefs.island.locked === true;
+  root.classList.toggle('locked', view.locked);
+  const badge = el('lockBadge');
+  if (badge) badge.hidden = !view.locked;
   view.layout = snapshot.layout ?? null;
   view.surface = snapshot.layout?.arranged?.compact ?? { right: [], left: [] };
   view.notch = snapshot.geometry.notch;
@@ -980,6 +985,7 @@ function renderSettings (state) {
   const prefs = state.prefs;
   el('styleSelect').value = prefs.island.style;
   el('hoverToggle').checked = prefs.island.hoverToExpand !== false;
+  el('lockToggle').checked = prefs.island.locked === true;
   el('mediaKeysToggle').checked = prefs.hotkeys.mediaKeys === true;
   el('loginToggle').checked = prefs.launchAtLogin === true;
 
@@ -1109,6 +1115,8 @@ function syncPanels () {
   const active = view.state === 'compact' ? null : head === 'activity' ? 'activity' : head;
   const collapse = el('islandCollapse');
   if (collapse && !collapse.childElementCount) collapse.innerHTML = icon('chevron', { size: 12 });
+  const badge = el('lockBadge');
+  if (badge && !badge.childElementCount) badge.innerHTML = icon('lock', { size: 11 });
   for (const panel of root.querySelectorAll('.panel')) {
     panel.classList.toggle('active', panel.dataset.panel === active);
   }
@@ -1753,6 +1761,9 @@ function openPanel (name) {
     api.action('panel.open', { state: 'compact' });
     return;
   }
+  // Locked means compact: folding answers, opening does not. The main process
+  // refuses the same way; this just saves the round trip.
+  if (view.locked) return;
   view.pinned = true;
   view.lastPanel = name;
   api.action('panel.open', { state: name });
@@ -1787,13 +1798,15 @@ root.addEventListener('pointerdown', (event) => {
   if (!event.target.closest('.widget')
     && event.target.closest('button, .slider, .progress, input, select')) return;
 
-  // A long press reveals the extra controls without opening a panel first.
+  // A long press locks the island instead of opening anything first: locked
+  // means compact, whatever asks, until it is long-pressed back open. The
+  // quick controls stay one tray click away.
   pressTimer = setTimeout(() => {
     pressTimer = null;
     drag = { moved: true, long: true };
     suppressClick = true;
     root.classList.add('pressed');
-    openPanel('quick');
+    api.action('island.lock', {});
   }, 420);
 
   drag = { startY: event.clientY, moved: false };
@@ -1871,6 +1884,7 @@ document.addEventListener('change', (event) => {
   const { id, value, checked } = event.target;
   if (id === 'styleSelect') api.action('prefs.set', { patch: { island: { style: value } } });
   if (id === 'hoverToggle') api.action('prefs.set', { patch: { island: { hoverToExpand: checked } } });
+  if (id === 'lockToggle') api.action('prefs.set', { patch: { island: { locked: checked } } });
   if (id === 'mediaKeysToggle') api.action('prefs.set', { patch: { hotkeys: { mediaKeys: checked } } });
   if (id === 'loginToggle') api.action('prefs.set', { patch: { launchAtLogin: checked } });
   if (id === 'autoUpdateToggle') api.action('prefs.set', { patch: { updates: { autoCheck: checked } } });
@@ -2377,6 +2391,7 @@ let hoverTimer = null;
 root.addEventListener('mouseenter', () => {
     clearTimeout(hoverTimer);
     if (view.snapshot?.capturing) return;
+    if (view.locked) return;
     if (view.hoverToExpand && view.state === 'compact' && !view.pinned) {
         openPanel(view.lastPanel ?? 'player');
     }

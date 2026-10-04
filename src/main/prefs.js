@@ -14,6 +14,8 @@ const DEFAULTS = {
     // maxWidth: 560,  // removed - now dynamic based on content
     expandedHeight: 240,
     hoverToExpand: true,
+    // Locked means compact, whatever asks: long-press the island to toggle it.
+    locked: false,
     hideOnFullscreen: false,
     hideMenuBar: true,
     clickPassThrough: true,

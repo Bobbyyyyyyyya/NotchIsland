@@ -406,13 +406,16 @@ class Island {
     this._drag = null;
 
     if (this.state === 'compact' && last < -18) {
-      this.state = this.lastPanel ?? 'player';
-      this.onStateChange?.(this.state);
-      // Through `_applyFrame` so the renderer and the skip check agree on what
-      // it has already been told.
-      this._applyFrame({ ...this.frame });
-      this.resize(null, { height: this.expandedHeight });
-      return;
+      // Locked means compact: an upward drag folds nothing open.
+      if (this.prefs.get('island.locked') !== true) {
+        this.state = this.lastPanel ?? 'player';
+        this.onStateChange?.(this.state);
+        // Through `_applyFrame` so the renderer and the skip check agree on what
+        // it has already been told.
+        this._applyFrame({ ...this.frame });
+        this.resize(null, { height: this.expandedHeight });
+        return;
+      }
     }
     if (this.state !== 'compact' && last > 26) {
       this.state = 'compact';
@@ -426,6 +429,9 @@ class Island {
 
   /** Called on every pointer move; grows the island while it is hovered. */
   setHovering (hovering) {
+    // Locked means compact: hovering neither lifts the pill nor, through the
+    // renderer, opens what was last looked at.
+    if (hovering && this.prefs.get('island.locked') === true) hovering = false;
     if (hovering === this.hovering) return;
     this.hovering = hovering;
     if (this.state === 'compact') this.resize(null, { height: this.compactHeight });

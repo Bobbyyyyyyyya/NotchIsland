@@ -506,6 +506,30 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   transform: translateX(-50%);
 }
 
+/* The lock chip: a small badge in the pill's corner while the island refuses
+   to open, so a locked island explains itself instead of feeling broken. It
+   hangs off the compact strip without joining either arm, which keeps it out
+   of the width the island measures for itself. Pointer-transparent. */
+.lock-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  border: 0.5px solid var(--hairline);
+  color: var(--muted);
+  pointer-events: none;
+}
+.lock-badge[hidden] { display: none; }
+.lock-badge .icon { width: 9px; height: 9px; }
+/* Locked invites nothing: no hover edge-light while the island stays shut. */
+#island.locked:hover { border-color: var(--hairline); }
+
 #island[data-state="compact"] .arm { opacity: 1; }
 /*
  * An open panel replaces the compact row instead of stacking on top of it, which
