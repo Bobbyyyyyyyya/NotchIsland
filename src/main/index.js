@@ -881,8 +881,11 @@ const actions = {
   // part of the island: the widgets join the row the user arranges, and the panels
   // join the list the tray and the radio menu draw from.
 
-  'mods.set': ({ mods }) => {
-    state.mods = Array.isArray(mods) ? mods : [];
+  // `registered` rather than `mods`: destructuring the argument under the module's
+  // own name would shadow the module, and `mods.sync` would then be a property of the
+  // metadata array — which is how a rename became a crash on the first mod loaded.
+  'mods.set': ({ mods: registered }) => {
+    state.mods = Array.isArray(registered) ? registered : [];
     mods.sync(state, prefs, layout);
   },
   'mods.toggle': ({ name, on }) => {

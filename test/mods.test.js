@@ -158,6 +158,17 @@ test('a layout from before the mods section existed gains it back', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('no action handler shadows the mods module', () => {
+  // `mods.set` unpacks its argument, and calling that argument `mods` shadows the module
+  // of the same name — so `mods.sync` reads a property of the metadata array and the
+  // first mod that loads takes the island down with it. Nothing else unpacks a name the
+  // main process already uses, and this is the guard that keeps it that way.
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'index.js'), 'utf8');
+  const setter = source.slice(source.indexOf("'mods.set'"), source.indexOf("'mods.toggle'"));
+  assert.ok(!setter.includes('({ mods })'), 'the argument is not unpacked under the module’s name');
+  assert.ok(setter.includes('mods.sync'), 'and the module is the one being called');
+});
+
 // ------------------------------------------------------- the boundary
 
 test('the page allows a mod to run and nothing else', () => {
