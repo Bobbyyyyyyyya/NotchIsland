@@ -755,7 +755,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
  * either side of a housing, and an item's side is a choice the surface makes and
  * the panel has to show.
  */
-.layout-scroll { display: flex; flex-direction: column; gap: 8px; }
+.layout-scroll { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow: hidden; }
 /* How much room each side has, in the title bar: the one number that decides
    whether a drop will be taken, so it does not have to be hunted for. */
 .layout-count {
@@ -787,6 +787,8 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   padding: 9px 8px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.05);
+  min-width: 0;
+  overflow: hidden;
 }
 /* One list rather than two arms: that is all the panels other than the row are. */
 .layout-surface[data-arms="0"] { display: block; }
@@ -799,13 +801,16 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   gap: 3px;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 .layout-arm {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   /* A side with nothing on it still has to be somewhere to aim at, so an empty one
      holds the height of a full item and says what it wants. */
   min-height: 26px;
@@ -826,6 +831,10 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 }
 .layout-arm-empty {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 9.5px;
   color: rgba(255, 255, 255, 0.3);
   white-space: nowrap;
@@ -835,6 +844,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .layout-housing {
   flex: none;
   height: 34px;
+  max-width: 100%;
   border-radius: 0 0 12px 12px;
   background: #05050a;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -854,9 +864,28 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   white-space: nowrap;
   cursor: grab;
   touch-action: none;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
-.layout-item .label { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
+.layout-item .label { max-width: 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .layout-item .icon { flex: none; }
+.layout-item.quiet {
+  opacity: 0.62;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+.layout-quiet {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.62);
+}
 /* The size badge: what a tap on the item would change. */
 .layout-size {
   flex: none;
@@ -1425,6 +1454,12 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 /* A row that runs out of room drops the bubbles' words before anything is
    clipped: the event stays, its label does not. */
 #island.bubbles-tight .bubble .label { display: none; }
+
+/* Once the row is too full, words go first, even from widgets. Battery remains
+   readable because that is the point of keeping the widget in the row. */
+#island.widgets-tight .bubble .label,
+#island.widgets-tight .widget.readout:not([data-widget="battery"]) .label { display: none; }
+
 #island.bubbles-tight .bubble { padding: 0 9px; gap: 5px; }
 #island.bubbles-tight .bubble .mini-bar { width: 34px; }
 .bubble.sent .mini-bar > i.dot.from { transform: translateX(2px); }

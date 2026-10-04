@@ -180,12 +180,21 @@ class Island {
    * Resizes the island. The requested size is what the content needs; it gets
    * clamped between the physical housing and the configured maximums.
    */
+  // Dynamic max width: screen width minus margins, capped at reasonable bounds
+  get dynamicMaxWidth () {
+    const screen = require('electron').screen;
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const workArea = primaryDisplay.workAreaSize;
+    // Max 90% of screen width, capped at 1200px, minimum 400px
+    return Math.min(Math.max(workArea.width * 0.9, 400), 1200);
+  }
+
   resize (requestedWidth, { height, animate = true } = {}) {
     if (requestedWidth) this.requestedWidth = requestedWidth;
     const expanded = this.state !== 'compact';
     const minimum = this.notch.detected ? this.notch.width : 200;
-    const fallback = expanded ? this.maxWidth : minimum;
-    const width = Math.round(Math.min(Math.max(this.requestedWidth || fallback, minimum), this.maxWidth));
+    const fallback = expanded ? this.dynamicMaxWidth : minimum;
+    const width = Math.round(Math.min(Math.max(this.requestedWidth || fallback, minimum), this.dynamicMaxWidth));
 
     let islandHeight = this.compactHeight;
     if (expanded) {

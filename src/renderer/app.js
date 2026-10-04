@@ -686,7 +686,8 @@ function progressOf (media) {
 
 function render (snapshot) {
   view.snapshot = snapshot;
-  view.maxWidth = snapshot.prefs.island.maxWidth;
+  // Dynamic max width from main process (allows island to grow/shrink with content)
+  view.maxWidth = snapshot.layout?.maxWidth ?? 560;
   view.style = snapshot.prefs.island.style;
   view.hoverToExpand = snapshot.prefs.island.hoverToExpand;
   view.layout = snapshot.layout ?? null;
@@ -1626,6 +1627,18 @@ function syncPanelWidth () {
   root.style.setProperty('--panel-w', wanted);
 }
 
+/**
+ * Compress text before removing a configured widget.
+ *
+ * Once compact, the row is rebuilt on every push, so this first restores the full
+ * labels and asks the question again. That avoids a latch that would keep a
+ * percentage hidden after there is room for it again.
+ */
+function tightenWidgetLabels () {
+  root.classList.remove('widgets-tight');
+  root.classList.toggle('widgets-tight', compactWidth() > view.maxWidth);
+}
+
 function requestSize () {
   const ask = (size) => {
     const key = JSON.stringify(size);
@@ -1639,6 +1652,7 @@ function requestSize () {
     // be used here: it reports the box height, which is whatever the island
     // happens to be right now, so the panel would never shrink again.
     root.classList.remove('bubbles-tight');
+    root.classList.remove('widgets-tight');
     ask({ width: expandedWidth(), height: panelHeight() });
     return;
   }
@@ -1665,6 +1679,10 @@ function requestSize () {
   root.classList.toggle('bubbles-tight',
     view.tightBubbles > 0 && view.bubbleCount >= view.tightBubbles);
 
+  // Compress before removing: hide words first, keep an arranged battery readable,
+  // and only then consider dropping a widget.
+  tightenWidgetLabels();
+
   // The compact island is width limited: when the widgets do not fit, the widest
   // arm gives up its last widget until they do. The real Dynamic Island drops
   // detail in exactly the same way. Activity bubbles are never dropped — hiding
@@ -1675,11 +1693,16 @@ function requestSize () {
     // place for the same reason. Everything else goes first, from whichever arm
     // has the most to give, so nothing is ever pushed past the island's edge.
     const arms = [left, right].sort((a, b) => armContentWidth(b) - armContentWidth(a));
-    const droppable = (node) => !node.classList.contains('bubble')
+    const ordinary = (node) => !node.classList.contains('bubble')
       && !node.classList.contains('bt-hello')
-      && !node.classList.contains('keep');
+      && !node.classList.contains('keep')
+      && node.dataset.widget !== 'battery';
+    // A configured battery is the last row member to go. With three on an arm, another
+    // widget leaves before it; only if nothing else remains does the battery go.
     const candidate = arms
-      .map((arm) => [...arm.children].reverse().find(droppable))
+      .map((arm) => [...arm.children].reverse().find(ordinary))
+      .find(Boolean) ?? arms
+      .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble') && child.dataset.widget !== 'battery'))
       .find(Boolean) ?? arms
       .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble')))
       .find(Boolean);
@@ -2067,15 +2090,10 @@ function layoutSide (side, label, ids) {
   // index, which is what the drop sends.
   arm.append(layoutGap(side, 0));
   ids.forEach((id, at) => {
-    // Every slot is drawn, including the ones with nothing to say: an arrangement
-    // that says three and a row that shows one is a question nobody can answer
-    // unless the empty place is visible as a place.
-    const item = layoutItems().find((entry) => entry.id === id);
-    // From the same cache the counter reads, so the preview and the island agree on
-    // what is there without drawing any widget twice.
-    arm.append(view.widgetNodes.has(id)
-      ? layoutSlot(id)
-      : layoutEmpty(`${item?.label ?? id} — nothing to show`));
+    // Every slot is an item, including one that is quiet: an arrangement that says
+    // three and a row that shows one is only manageable when the empty place can
+    // still be dragged or taken out.
+    arm.append(layoutSlot(id, { quiet: !view.widgetNodes.has(id) }));
     arm.append(layoutGap(side, at + 1));
   });
   if (!ids.length) arm.append(layoutEmpty('Drop here'));
@@ -2107,12 +2125,13 @@ function layoutGap (side, index) {
   return node;
 }
 
-function layoutSlot (id) {
+function layoutSlot (id, options = {}) {
   const item = layoutItems().find((entry) => entry.id === id);
+  const quiet = options.quiet === true;
   const node = document.createElement('div');
   const sizes = item?.sizes ?? [];
   const size = sizes.length ? widgetSize(id) : null;
-  node.className = `layout-item${sizes.length > 1 ? ' sizeable' : ''}`;
+  node.className = `layout-item${sizes.length > 1 ? ' sizeable' : ''}${quiet ? ' quiet' : ''}`;
   node.dataset.id = id;
   node.dataset.side = layoutArmOf(id);
   if (size) node.dataset.size = size;
@@ -2120,7 +2139,9 @@ function layoutSlot (id) {
     ?? (sizes.length > 1
       ? `${item.label} — tap to make it ${size === sizes[0] ? sizes[1] : sizes[0]}`
       : item?.label ?? id);
+  if (quiet) node.title = `${node.title} — quiet right now; removing it keeps it out`;
   node.innerHTML = `${layoutGlyph(item)}<span class="label">${escapeHtml(item?.label ?? id)}</span>`
+    + (quiet ? '<span class="layout-quiet">quiet</span>' : '')
     + (sizes.length > 1 ? `<span class="layout-size">${size === sizes[0] ? 'L' : 'S'}</span>` : '')
     + '<button class="layout-remove" title="Take it out"></button>';
   const remove = node.querySelector('.layout-remove');

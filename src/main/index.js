@@ -1152,9 +1152,6 @@ function snapshot () {
         ),
         compact: state.compact ?? compactRow(),
       },
-      // Resolved, so the renderer never has to know a default: whatever the
-      // arrangement says an item is drawn at is what it is told it is drawn at.
-      sizes: sizesOf(prefs.get('layout')),
       // How full each side is, and how full it may be. The editor draws the counter
       // from this and refuses a drop onto a side that is full, so the rule is
       // visible before it is felt.
@@ -1162,6 +1159,8 @@ function snapshot () {
       fullness: layout.fullness(prefs.get('layout'), 'compact'),
       profile: profiles.active,
       profiles: Object.keys(profiles.all),
+      // Dynamic max width for the island (allows growing/shrinking with content)
+      maxWidth: island.dynamicMaxWidth,
     },
   });
 }

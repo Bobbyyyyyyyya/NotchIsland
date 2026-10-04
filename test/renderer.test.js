@@ -52,9 +52,30 @@ test('the counter counts what is drawn, not what is arranged', () => {
   const counter = app.slice(app.indexOf('function renderCount'), app.indexOf('function shownBySide'));
   assert.ok(counter.includes('shownBySide()'), 'the counter consults it');
   assert.ok(counter.includes('quiet'), 'and says how many are quiet rather than hiding it');
-  // The preview draws every slot too, so an empty place is a place rather than a gap.
+  // The preview keeps every slot as an item, including one that is quiet, so it can
+  // still be dragged or taken out.
   const side = app.slice(app.indexOf('function layoutSide'), app.indexOf('function layoutEmpty'));
-  assert.ok(side.includes('layoutEmpty'), 'a slot with nothing to say is still drawn');
+  assert.ok(side.includes('layoutSlot(id, { quiet:'), 'a quiet slot is still an item');
+  const slot = app.slice(app.indexOf('function layoutSlot'), app.indexOf('function cycleWidgetSize'));
+  assert.ok(slot.includes('layout-quiet'), 'and it is marked as quiet');
+});
+
+test('the arrangement cannot spill out of the app', () => {
+  // The editor is a row of flexible boxes in a narrow panel. Without wrapping and
+  // shrinkable items, a side with several widgets forces its arm wider than the app
+  // and the rest of the row either scrolls out of reach or disappears.
+  const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'styles.css'), 'utf8');
+  const block = (selector) => {
+    // Match only a selector at the start of a line. A substring match would find a
+    // qualified rule such as `.layout-side.full > .layout-arm` instead.
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = styles.match(new RegExp(`(^|\\n)${escaped}\\s*{([\\s\\S]*?)\\n}`, 'm'));
+    assert.ok(match, `${selector} is styled`);
+    return match[2];
+  };
+  assert.match(block('.layout-arm'), /flex-wrap:\s*wrap/, 'an arm wraps instead of forcing the row wider');
+  assert.match(block('.layout-item'), /max-width:\s*100%/, 'an item stays inside its arm');
+  assert.match(block('.layout-surface'), /overflow:\s*hidden/, 'the surface clips what it cannot fit');
 });
 
 test('the layout editor only asks for things the main process sends', () => {

@@ -11,7 +11,7 @@ const DEFAULTS = {
   island: {
     // 'notch' keeps the island inside the cutout, 'pill' lets it grow around it.
     style: 'pill',
-    maxWidth: 560,
+    // maxWidth: 560,  // removed - now dynamic based on content
     expandedHeight: 240,
     hoverToExpand: true,
     hideOnFullscreen: false,
