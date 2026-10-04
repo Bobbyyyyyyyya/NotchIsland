@@ -265,6 +265,10 @@ class Island {
    * A request that arrives while the island is already moving retargets the
    * springs instead of replacing them: restarting would throw the velocity away
    * and the growth would visibly stutter halfway.
+   *
+   * The horizontal origin rides its own spring rather than being derived from
+   * the width mid-flight: deriving it snaps the island sideways the moment the
+   * row's shift changes, while the width is still gliding there.
    */
   _tweenTo (target) {
     const radius = this.targetRadius;
@@ -272,7 +276,8 @@ class Island {
 
     if (this._springs) {
       const wanted = this._tweenTarget;
-      if (near(wanted.width, target.width) && near(wanted.height, target.height) && near(wanted.radius, radius)) return;
+      if (near(wanted.width, target.width) && near(wanted.height, target.height) && near(wanted.radius, radius) && near(wanted.x, target.x)) return;
+      this._springs.x.retarget(target.x);
       this._springs.width.retarget(target.width);
       this._springs.height.retarget(target.height);
       this._springs.radius.retarget(radius);
@@ -286,7 +291,7 @@ class Island {
     // Animating to the size we already have means resizing the window on every
     // frame for nothing, which is exactly the kind of thing that makes an
     // always-on-top overlay stutter.
-    if (near(from.width, target.width) && near(from.height, target.height) && near(from.radius, radius)) {
+    if (near(from.width, target.width) && near(from.height, target.height) && near(from.radius, radius) && near(from.x, target.x)) {
       this._applyFrame(this._centered(target.width, target.height, radius, target.y));
       return;
     }
@@ -296,6 +301,7 @@ class Island {
     const opening = this.state !== 'compact' && target.height > from.height + 8;
     const feel = opening ? OPEN_SPRING : undefined;
     this._springs = {
+      x: spring(from.x, target.x, feel),
       width: spring(from.width, target.width, feel),
       height: spring(from.height, target.height, feel),
       radius: spring(from.radius, radius, feel),
@@ -309,20 +315,28 @@ class Island {
       this._lastStepAt = frameStart;
       const elapsed = frameStart - start;
       const wanted = this._tweenTarget;
+      const nextX = this._springs.x(elapsed);
       const nextWidth = this._springs.width(elapsed);
       const nextHeight = this._springs.height(elapsed);
       const nextRadius = this._springs.radius(elapsed);
-      const done = nextWidth === null && nextHeight === null && nextRadius === null;
+      const done = nextX === null && nextWidth === null && nextHeight === null && nextRadius === null;
 
-      this._applyFrame(this._centered(
-        nextWidth ?? wanted.width,
-        nextHeight ?? wanted.height,
-        Math.round((nextRadius ?? wanted.radius) * 100) / 100,
-        wanted.y,
-      ));
+      this._applyFrame({
+        x: Math.round(nextX ?? wanted.x),
+        y: wanted.y,
+        width: Math.round(nextWidth ?? wanted.width),
+        height: Math.round(nextHeight ?? wanted.height),
+        radius: Math.round((nextRadius ?? wanted.radius) * 100) / 100,
+      });
 
       if (done || Date.now() > this._tweenDeadline) {
-        this._applyFrame(this._centered(wanted.width, wanted.height, wanted.radius, wanted.y));
+        this._applyFrame({
+          x: wanted.x,
+          y: wanted.y,
+          width: wanted.width,
+          height: wanted.height,
+          radius: wanted.radius,
+        });
         this._stopTween();
         return;
       }
