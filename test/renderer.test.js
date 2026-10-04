@@ -44,6 +44,19 @@ test('the renderer only asks for elements the page has', () => {
     `el('${missing[0]}') is asked for but is not in the page — it is null until something puts it there`);
 });
 
+test('the counter counts what is drawn, not what is arranged', () => {
+  // A widget with nothing to say — an empty clipboard, AirDrop that is not live — is
+  // in the arrangement and not on the island. Counting it made the counter say 3/3
+  // over a row showing one, which is a counter that lies about the row it describes.
+  assert.ok(app.includes('function shownBySide'), 'and it asks what is actually there');
+  const counter = app.slice(app.indexOf('function renderCount'), app.indexOf('function shownBySide'));
+  assert.ok(counter.includes('shownBySide()'), 'the counter consults it');
+  assert.ok(counter.includes('quiet'), 'and says how many are quiet rather than hiding it');
+  // The preview draws every slot too, so an empty place is a place rather than a gap.
+  const side = app.slice(app.indexOf('function layoutSide'), app.indexOf('function layoutEmpty'));
+  assert.ok(side.includes('layoutEmpty'), 'a slot with nothing to say is still drawn');
+});
+
 test('the layout editor only asks for things the main process sends', () => {
   // The editor reads `view.layout`, which the snapshot fills in. A key the main
   // process does not send reads as undefined, which is how a whole panel can come up

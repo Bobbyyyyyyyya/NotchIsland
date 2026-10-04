@@ -1846,9 +1846,36 @@ function renderCount () {
     node.dataset.tight = '';
     return;
   }
-  node.textContent = `Left ${full.left.used}/${full.left.max} · Right ${full.right.used}/${full.right.max}`;
+  // Counted from what is actually drawn, not from the arrangement: a widget with
+  // nothing to say — an empty clipboard, AirDrop that is not live — is in the
+  // arrangement and not on the island, and a counter that counts it is a counter
+  // that lies about the row it is describing.
+  const shown = shownBySide();
+  const left = shown.left ?? full.left.used;
+  const right = shown.right ?? full.right.used;
+  const quiet = (full.left.used - left) + (full.right.used - right);
+  node.textContent = quiet
+    ? `Left ${left}/${full.left.max} · Right ${right}/${full.right.max} · ${quiet} quiet`
+    : `Left ${left}/${full.left.max} · Right ${right}/${full.right.max}`;
   const worst = Math.max(full.left.used, full.right.used);
   node.dataset.tight = worst >= full.right.max ? 'full' : worst >= full.right.max - 1 ? 'near' : '';
+}
+
+/**
+ * How many widgets each side is actually drawing.
+ *
+ * The arrangement is what the user decided; the island is what there is to say. The
+ * two differ whenever a widget is in the arrangement and has nothing to show, and
+ * the difference is the whole reason this is counted here rather than in the layout.
+ */
+function shownBySide () {
+  const arms = surfaceArms(view.snapshot ?? {}, 'compact');
+  // `renderWidgets` has already drawn the row by the time this runs, and it keeps
+  // the widgets it drew in `view.widgetNodes` — a widget that returned nothing is
+  // simply not in there. Asking the cache rather than rendering again keeps this from
+  // running a widget twice, which matters for the one that greets a device.
+  const count = (ids) => ids.filter((id) => view.widgetNodes.has(id)).length;
+  return { left: count(arms.left), right: count(arms.right) };
 }
 
 /**
@@ -1955,7 +1982,15 @@ function layoutSide (side, label, ids) {
   // index, which is what the drop sends.
   arm.append(layoutGap(side, 0));
   ids.forEach((id, at) => {
-    arm.append(layoutSlot(id));
+    // Every slot is drawn, including the ones with nothing to say: an arrangement
+    // that says three and a row that shows one is a question nobody can answer
+    // unless the empty place is visible as a place.
+    const item = layoutItems().find((entry) => entry.id === id);
+    // From the same cache the counter reads, so the preview and the island agree on
+    // what is there without drawing any widget twice.
+    arm.append(view.widgetNodes.has(id)
+      ? layoutSlot(id)
+      : layoutEmpty(`${item?.label ?? id} — nothing to show`));
     arm.append(layoutGap(side, at + 1));
   });
   if (!ids.length) arm.append(layoutEmpty('Drop here'));
