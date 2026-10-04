@@ -36,6 +36,7 @@ const view = {
   appliedState: 'compact',
   ax: 0,
   locked: false,
+  foldedAt: 0,
   connectedBluetooth: null,
   bluetoothHello: null,
   sections: {},
@@ -1551,6 +1552,9 @@ function applyFrame (frame) {
   // only changes when the state does. Doing it per frame would relayout the
   // panel in the middle of the very animation it belongs to.
   if (stateChanged) markMorph();
+  // Folding stamps the hover cooldown: without it the island springs back open
+  // the moment the pointer brushes it again right after it just closed.
+  if (stateChanged && frame.state === 'compact') view.foldedAt = Date.now();
   view.appliedState = frame.state;
   if (root.dataset.state !== frame.state) root.dataset.state = frame.state;
   if (root.dataset.style !== view.style) root.dataset.style = view.style;
@@ -2387,11 +2391,16 @@ function dropArranged (id, target) {
 
 // ---------------------------------------------------------------- hover
 
+// How long after folding the island ignores the pointer: without it every
+// pass over the menu bar opens the player again the instant it just closed.
+const HOVER_REOPEN_MS = 2000;
+
 let hoverTimer = null;
 root.addEventListener('mouseenter', () => {
     clearTimeout(hoverTimer);
     if (view.snapshot?.capturing) return;
     if (view.locked) return;
+    if (Date.now() - (view.foldedAt ?? 0) < HOVER_REOPEN_MS) return;
     if (view.hoverToExpand && view.state === 'compact' && !view.pinned) {
         openPanel(view.lastPanel ?? 'player');
     }
