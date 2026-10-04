@@ -131,14 +131,25 @@ async function bootstrap () {
       push();
     });
   }
-  powerMonitor.on('shutdown', () => helper.stop());
+  powerMonitor.on('shutdown', () => { systemShutdown = true; helper.stop(); });
 }
 
 app.on('window-all-closed', () => {
   // Menu bar app: closing the island window keeps the process alive.
 });
 
-app.on('before-quit', () => {
+// The goodbye glide is for a human quitting: once it is underway, or the
+// session itself is going away, leave immediately instead of lingering.
+let quitting = false;
+let systemShutdown = false;
+
+app.on('before-quit', (event) => {
+  if (!quitting && !systemShutdown) {
+    event.preventDefault();
+    quitting = true;
+    island.foldForQuit().finally(() => app.quit());
+    return;
+  }
   clearInterval(mediaTimer);
   clearInterval(clipboardTimer);
   clearInterval(cpuTimer);

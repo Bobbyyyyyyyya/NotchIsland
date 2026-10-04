@@ -222,6 +222,33 @@ class Island {
     this._tweenTo(target);
   }
 
+  /**
+   * Glide the island into the camera housing for goodbye: fold to the compact
+   * pill and shrink it to the notch (or a small pill where there is none), so
+   * quitting reads as the island sinking away rather than blinking out. Resolves
+   * once the glide lands — or stops mattering, because quitting must not wait
+   * out the spring's long tail.
+   */
+  foldForQuit () {
+    if (!this.window || this.window.isDestroyed()) return Promise.resolve();
+    this._stopTween();
+    // Direct assignment, not setState: there is no one left to tell, and the
+    // tray must not be rebuilt on the way out.
+    this.state = 'compact';
+    this._shift = 0;
+    const width = this.notch.detected ? this.notch.width : 140;
+    this.requestedWidth = width;
+    this._tweenTo({ ...this._bounds(width, this.compactHeight) });
+    const started = Date.now();
+    return new Promise((resolve) => {
+      const wait = () => {
+        if (!this._springs || Date.now() - started > 900) resolve();
+        else setTimeout(wait, 40);
+      };
+      wait();
+    });
+  }
+
   /** Corner radius the island should have right now, in points. */
   get targetRadius () {
     if (this.state === 'compact') {

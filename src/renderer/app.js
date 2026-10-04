@@ -574,6 +574,13 @@ function renderBubbles (state) {
     let node = view.bubbleNodes.get(activity.id);
     if (!node) {
       node = bubble(activity);
+      // A new event scales in with the window gliding wider underneath it. The
+      // node is reused across renders and re-inserted every time, which would
+      // replay the arrival — so the class leaves on its own first play.
+      node.classList.add('enter');
+      node.addEventListener('animationend', (event) => {
+        if (event.target === node) node.classList.remove('enter');
+      });
       view.bubbleNodes.set(activity.id, node);
     }
     updateBubble(node, activity);
@@ -744,6 +751,10 @@ function renderWidgets (state) {
   const withStatus = [...arms.right, ...(hasSomethingToAnnounce(state.update) ? ['update'] : [])];
 
   const built = {};
+  // What is already on screen stays settled: only an id that was not there a
+  // moment ago scales in, so a battery tick never replays the arrival.
+  const shown = new Set([...el('armRight').children, ...el('armLeft').children]
+    .map((node) => node.dataset.widget).filter(Boolean));
   for (const id of [...withStatus, ...arms.left]) {
     const widget = WIDGETS[id] ?? modWidgetDef(id);
     if (!widget) continue;
@@ -754,6 +765,7 @@ function renderWidgets (state) {
     }
     const previous = view.widgetNodes.get(id);
     if (previous) previous.replaceWith(fresh);
+    if (!shown.has(id)) fresh.classList.add('enter');
     fresh.dataset.widget = id;
     view.widgetNodes.set(id, fresh);
     built[id] = fresh;
