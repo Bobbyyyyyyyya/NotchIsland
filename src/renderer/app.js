@@ -208,7 +208,9 @@ const WIDGETS = {
       // does. The red alarm tint is saved for things worth a warning.
       const label = document.createElement('span');
       label.className = 'label';
-      label.textContent = state.volume.muted ? 'Mute' : `${Math.round(state.volume.value * 100)}`;
+      // The battery and the CPU both wear a %, so the volume does too: a bare
+      // number next to two percentages reads as a different kind of thing.
+      label.textContent = state.volume.muted ? 'Mute' : `${Math.round(state.volume.value * 100)}%`;
       node.append(label);
       node.title = state.volume.muted ? 'Muted' : 'Output volume';
       return node;
@@ -299,7 +301,7 @@ const WIDGETS = {
       if (tracked) {
         const label = document.createElement('span');
         label.className = 'label';
-        label.textContent = `${Math.round(tracked.battery * 100)}`;
+        label.textContent = `${Math.round(tracked.battery * 100)}%`;
         node.append(label);
       }
       node.title = tracked ? `${tracked.name} ${Math.round(tracked.battery * 100)}%` : 'No accessory connected';
@@ -625,38 +627,40 @@ function bindSwipe (node, activity) {
 
 /** Bounces the widgets whose headline value changed since the last render. */
 function popChangedWidgets (nodes, state) {
-  // Whatever is in the row, in the arrangement's order: a widget bounces when its
-  // own number moves, and the comparison has to line the two pushes up.
   const arms = surfaceArms(state, 'compact');
   const ids = [...arms.right, ...arms.left];
-  const values = ids.map((id) => {
-    if (id === 'media') return state.media.title;
-    if (id === 'clipboard') return state.clipboard.items[0]?.text ?? '';
-    if (id === 'volume') return `${Math.round(state.volume.value * 100)}${state.volume.muted}`;
-    if (id === 'mic') return `${state.input.muted}${state.input.active.join()}`;
-    if (id === 'battery') return `${Math.round(state.battery.level * 100)}${state.battery.charging ? 'c' : ''}`;
-    if (id === 'bluetooth') return state.bluetooth.devices.map((device) => device.battery).join();
-    return '';
-  });
+  // Keyed by widget rather than by position: a row that was rearranged has the same
+  // widgets in different places, and comparing them slot by slot called every one of
+  // them changed. Moving something is not the same as something moving.
+  const values = new Map(ids.map((id) => [id, widgetValue(state, id)]));
 
   const previous = view.widgetValues;
-  const differs = previous !== undefined
-    && (previous.length !== values.length || previous.some((value, index) => value !== values[index]));
-  if (differs) {
-    const changed = ids.filter((id, index) => previous[index] !== values[index]);
-    for (const node of nodes) {
-      if (!changed.includes(node.dataset.widget)) continue;
-      node.classList.remove('pop');
-      void node.offsetWidth; // restart the animation
-      node.classList.add('pop');
-    }
-    // Volume and the microphone move several times a second while a key is
-    // held, and every step of them used to shove the whole island. They stay
-    // local: only a change in what the row actually says may push the pill.
-    if (changed.some((id) => id !== 'volume' && id !== 'mic')) nudge();
-  }
-
   view.widgetValues = values;
+  if (!previous) return;
+
+  const changed = ids.filter((id) => previous.get(id) !== values.get(id));
+  if (!changed.length) return;
+  for (const node of nodes) {
+    if (!changed.includes(node.dataset.widget)) continue;
+    node.classList.remove('pop');
+    void node.offsetWidth; // restart the animation
+    node.classList.add('pop');
+  }
+  // Volume and the microphone move several times a second while a key is held, and
+  // every step of them used to shove the whole island. They stay local: only a change
+  // in what the row actually says may push the pill.
+  if (changed.some((id) => id !== 'volume' && id !== 'mic')) nudge();
+}
+
+/** What a widget says, for the comparison that decides whether it bounces. */
+function widgetValue (state, id) {
+  if (id === 'media') return state.media.title;
+  if (id === 'clipboard') return state.clipboard.items[0]?.text ?? '';
+  if (id === 'volume') return `${Math.round(state.volume.value * 100)}${state.volume.muted}`;
+  if (id === 'mic') return `${state.input.muted}${state.input.active.join()}`;
+  if (id === 'battery') return `${Math.round(state.battery.level * 100)}${state.battery.charging ? 'c' : ''}`;
+  if (id === 'bluetooth') return state.bluetooth.devices.map((device) => device.battery).join();
+  return '';
 }
 
 /** The little push the island gives when its content changes underneath it. */

@@ -548,6 +548,10 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 
 /* States win over the tint: idle is quiet, a warning is unmistakable. */
 .widget.dim { color: var(--muted); background: rgba(255, 255, 255, 0.05); }
+/* The small form of a widget that can be more than one size: the same glyph, with
+   less around it, so a crowded row still reads as a row of things. */
+.widget.small { padding: 0 4px; }
+.widget.small .icon { width: 12px; height: 12px; }
 .widget.alert { color: var(--red); background: rgba(255, 69, 58, 0.18); }
 .widget.is-charging { color: var(--charge); background: rgba(255, 159, 10, 0.16); }
 /* The charging widget is the same amber-to-green walk as the panel's bar, so the
