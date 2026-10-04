@@ -291,6 +291,55 @@ installed by the updater itself are not quarantined and do not have that problem
   points Apple used to expose (`IOFFramebufferGetLight`) are gone on current
   macOS, and `F1`/`F2` already work system wide.
 
+## Mods
+
+A mod is a JavaScript file in the mods folder — `~/Library/Application Support/notch-island/mods/`.
+It registers what it brings and the island draws it:
+
+```js
+islandMod.register({
+  id: 'example',
+  name: 'Example',
+
+  widgets: [
+    {
+      id: 'example',
+      label: 'Example',
+      panel: 'mod:example',          // opened when the widget is clicked
+      render: (state) => {          // a node, or null to leave the slot empty
+        const node = document.createElement('button');
+        node.className = 'widget readout';
+        node.dataset.panelOpen = 'mod:example';
+        node.textContent = `Battery ${Math.round(state.battery.level * 100)}%`;
+        return node;
+      },
+    },
+  ],
+
+  panels: [
+    {
+      id: 'example',
+      label: 'Example',
+      render: (state, el) => { el.textContent = 'Drawn by a mod.'; },
+    },
+  ],
+});
+```
+
+A mod widget is an item in the island row like any other: it appears in the Arrange
+palette once the mod is loaded, and it counts against the three a side. A mod panel
+opens the way any panel does — from its widget, or by name.
+
+**The boundary.** Mod code runs in the island's page, which has no Node, no files and
+no network. It can draw, read the state it is handed, and fire the actions the island
+already has — and nothing else. It cannot read a file, open a socket, or reach the
+main process except through `window.islandMod`. A mod that throws while loading is
+left out and logged; a mod that throws while drawing gets a panel that says so. What
+is behind the boundary cannot take the island down.
+
+Each mod has a switch in Settings → Mods. Switching one off takes its widgets back out
+of the row.
+
 ## Layout
 
 ```
@@ -300,6 +349,7 @@ src/main/notch.js      camera housing detection through AppKit
 src/main/hotkeys.js    F7–F12 and the fallback chains
 src/main/activities.js live activities: timers, media, mic, Bluetooth, charging, updates
 src/main/layout.js     the surfaces, what can go in them, and the profiles over them
+src/main/mods.js       the mods folder, and what the loaded mods may put in the row
 src/main/artwork.js    which song the cover on screen belongs to
 src/main/helper.js     builds and supervises the Objective-C bridge
 src/main/updater.js    electron-updater behind one plain status object

@@ -734,7 +734,7 @@ function renderWidgets (state) {
 
   const built = {};
   for (const id of [...withStatus, ...arms.left]) {
-    const widget = WIDGETS[id];
+    const widget = WIDGETS[id] ?? modWidgetDef(id);
     if (!widget) continue;
     const fresh = widget.render(state);
     if (!fresh) {
@@ -778,11 +778,30 @@ function widgetSize (id) {
 
 function surfaceArms (state, surface) {
   const arranged = state?.layout?.arranged?.[surface];
-  if (Array.isArray(arranged)) return { right: arranged.filter((id) => WIDGETS[id]), left: [] };
+  // A mod widget is carried the same way a built-in one is: it is in the arrangement
+  // or it is not, and the renderer is the one that knows how to draw it.
+  const carries = (id) => Boolean(WIDGETS[id]) || modWidgets.has(id);
+  if (Array.isArray(arranged)) return { right: arranged.filter(carries), left: [] };
   return {
-    right: (arranged?.right ?? []).filter((id) => WIDGETS[id]),
-    left: (arranged?.left ?? []).filter((id) => WIDGETS[id]),
+    right: (arranged?.right ?? []).filter(carries),
+    left: (arranged?.left ?? []).filter(carries),
   };
+}
+
+/** The definition a mod widget draws from, for the one place that needs it. */
+function modWidgetDef (id) {
+  const widget = modWidgets.get(id);
+  return widget ? { render: (state) => widget.render(state) } : null;
+}
+
+/**
+ * Everything a surface can carry: what the app ships, and what the mods added.
+ *
+ * The palette offers what is not in use, so a mod widget that has not been placed yet
+ * has to be in here — otherwise it can be registered and never put in the row.
+ */
+function surfaceItems (surface) {
+  return [...layoutItems(surface), ...(surface === 'compact' ? [...modWidgets.values()] : [])];
 }
 
 /** A surface as a plain list, for the panels that are one. */
@@ -981,7 +1000,40 @@ function renderSettings (state) {
   el('retryHelper').hidden = state.helper.available;
 
   renderUpdates(state);
+  renderMods(state);
   arrangeSettingsSections(state);
+}
+
+/**
+ * A switch per mod.
+ *
+ * The switch is the whole of what the main process knows how to do with a mod: it can
+ * take its widgets out of the row and put them back. What a mod does while it is on is
+ * up to the mod.
+ */
+function renderMods (state) {
+  const list = el('modList');
+  const switches = state.prefs.mods ?? {};
+  if (!modList.length) {
+    const note = document.createElement('div');
+    note.className = 'hint';
+    note.textContent = 'No mods yet. Put a .js file in the mods folder and restart.';
+    list.replaceChildren(note);
+    return;
+  }
+  list.replaceChildren(...modList.map((mod) => {
+    const row = document.createElement('label');
+    row.className = 'row';
+    const name = document.createElement('span');
+    name.textContent = mod.name;
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.className = 'switch';
+    box.checked = switches[mod.id] !== false;
+    box.addEventListener('change', () => api.action('mods.toggle', { name: mod.id, on: box.checked }));
+    row.append(name, box);
+    return row;
+  }));
 }
 
 /** The settings blocks, kept so one left out of the arrangement can come back. */
@@ -1065,6 +1117,31 @@ function syncPanels () {
    if (active === 'battery') renderBattery(view.snapshot);
    if (active === 'quick') renderQuick(view.snapshot);
    if (active === 'clock') startClock();
+  if (active === 'mod') renderModPanel(tail);
+}
+
+/**
+ * Hands the panel to the mod that owns it.
+ *
+ * The mod draws; the island opens, titles and closes. A mod that throws while drawing
+ * gets a panel that says so rather than taking the island down with it — the same
+ * reason a mod that throws on load is left out.
+ */
+function renderModPanel (id) {
+  const panel = modPanels.get(id);
+  el('modPanelTitle').textContent = panel?.label ?? id;
+  const body = el('modPanelBody');
+  body.replaceChildren();
+  if (!panel) {
+    body.textContent = 'This mod is not loaded.';
+    return;
+  }
+  try {
+    panel.render(view.snapshot, body);
+  } catch (error) {
+    console.error(`[mods] ${id} could not draw its panel:`, error.message);
+    body.textContent = 'This mod could not draw its panel.';
+  }
 }
 
 /**
@@ -2068,7 +2145,7 @@ function layoutGlyph (item) {
 /** Everything the surface is not carrying: the palette the rest is dragged from. */
 function renderPalette () {
   const carrying = new Set(layoutOrder());
-  const spare = layoutItems().filter((item) => !carrying.has(item.id));
+  const spare = surfaceItems(arranging.surface).filter((item) => !carrying.has(item.id));
   const host = el('layoutPalette');
   if (!spare.length) {
     const note = document.createElement('div');
@@ -2380,7 +2457,7 @@ setInterval(() => {
   if (el('clipboardList').childElementCount) renderClipboard(view.snapshot);
 }, 10_000);
 
-api.getState().then((snapshot) => {
+loadMods().finally(() => api.getState()).then((snapshot) => {
   render(snapshot);
   // A frame may already have arrived while the page was loading; it is newer
   // than this snapshot, so it wins.
@@ -2395,6 +2472,92 @@ api.getState().then((snapshot) => {
   }
   requestSize();
 });
+
+// ---------------------------------------------------------------- mods
+
+/**
+ * What the loaded mods brought.
+ *
+ * A mod registers through `window.islandMod`, which is on the page rather than in the
+ * preload: mod code runs in the renderer's main world, and the preload's world cannot
+ * see it. The main process is told the metadata afterwards, so a mod can be arranged
+ * without the main process ever running mod code.
+ */
+const modWidgets = new Map();
+const modPanels = new Map();
+const modList = [];
+
+window.islandMod = {
+  /**
+   * Called by a mod file. `widgets` and `panels` are definitions; the render
+   * functions stay here, in the renderer, which is the only place they can run.
+   */
+  register (definition = {}) {
+    const mod = {
+      id: definition.id ?? 'mod',
+      name: definition.name ?? definition.id ?? 'Mod',
+    };
+    for (const widget of definition.widgets ?? []) {
+      if (!widget?.id) continue;
+      modWidgets.set(widget.id, { ...widget, mod: mod.id, name: mod.name });
+    }
+    for (const panel of definition.panels ?? []) {
+      if (!panel?.id) continue;
+      modPanels.set(panel.id, { ...panel, mod: mod.id, name: mod.name });
+    }
+    if (!modList.some((entry) => entry.id === mod.id)) modList.push(mod);
+    syncMods();
+  },
+  /** Fires one of the actions the island already has. */
+  action: (name, args) => api.action(name, args ?? {}),
+  /** The state the island is showing, as of the last push. */
+  state: () => view.snapshot,
+};
+
+/**
+ * Hands the main process the metadata for everything the mods registered.
+ *
+ * Only ids, labels and icons — never a render function. The main process runs no mod
+ * code, so this is the whole of what a mod is there: enough to arrange it, and enough
+ * to list it in the settings with a switch.
+ */
+function syncMods () {
+  const items = [
+    ...[...modWidgets.values()].map((widget) => ({
+      mod: widget.mod, id: widget.id, kind: 'widget', label: widget.label ?? widget.id, icon: widget.icon,
+    })),
+    ...[...modPanels.values()].map((panel) => ({
+      mod: panel.mod, id: panel.id, kind: 'panel', label: panel.label ?? panel.id,
+    })),
+  ];
+  api.action('mods.set', { mods: items });
+}
+
+/**
+ * Loads every mod file and runs it.
+ *
+ * A mod that throws is left out and said so, because a mod that breaks on load would
+ * otherwise take the island down with it — and the point of a boundary is that what is
+ * behind it cannot.
+ */
+async function loadMods () {
+  let files = [];
+  try {
+    files = await api.mods.load();
+  } catch (error) {
+    console.error('[mods] could not read the mods folder:', error.message);
+    return;
+  }
+  for (const file of files) {
+    try {
+      // Indirect eval, so the mod runs in the page's global scope and finds
+      // `window.islandMod` the way any other script would.
+      (0, eval)(file.source);
+    } catch (error) {
+      console.error(`[mods] ${file.name} did not load:`, error.message);
+    }
+  }
+}
 
 // Expose a tiny surface for debugging from the devtools console.
 window.__island = { view, api };

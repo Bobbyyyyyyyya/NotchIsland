@@ -68,6 +68,9 @@ const SURFACES = {
       { id: 'appearance', label: 'Appearance' },
       { id: 'hotkeys', label: 'Hotkeys' },
       { id: 'updates', label: 'Updates' },
+      // The switch for every mod that is loaded. It is a section like any other, so
+      // it can be moved or left out with the rest.
+      { id: 'mods', label: 'Mods' },
       { id: 'system', label: 'System' },
     ],
   },
@@ -121,7 +124,7 @@ const DEFAULT_LAYOUT = {
     'media', 'volume', 'battery', 'clock', 'clipboard', 'bluetooth',
   ],
   quick: ['volume', 'mic', 'bluetooth', 'player', 'clipboard', 'settings', 'timer'],
-  settings: ['appearance', 'hotkeys', 'updates', 'system'],
+  settings: ['appearance', 'hotkeys', 'updates', 'mods', 'system'],
 };
 
 /**
@@ -140,8 +143,23 @@ function surfaceNames () {
   return Object.keys(SURFACES);
 }
 
+/**
+ * Items a surface can carry: the ones the app ships, plus the ones a mod added.
+ *
+ * A mod registers a widget the same way a built-in one is registered, and the
+ * arrangement has to be able to hold it — otherwise a mod that draws a widget cannot
+ * be put in the row, which is the one thing it is for. The main process is what adds
+ * them, because it is the one that knows which mods are loaded.
+ */
+const added = {};
+
+function addItem (surface, item) {
+  added[surface] = [...(added[surface] ?? []), item];
+  return item;
+}
+
 function itemsOf (surface) {
-  return SURFACES[surface]?.items ?? [];
+  return [...(SURFACES[surface]?.items ?? []), ...(added[surface] ?? [])];
 }
 
 function itemDef (surface, id) {
@@ -470,6 +488,7 @@ module.exports = {
   itemsOf,
   itemDef,
   sideOf,
+  addItem,
   sizesOf,
   sizeOf,
   normalise,

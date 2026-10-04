@@ -239,7 +239,24 @@
             <div class="facts" id="facts"></div>
             <button class="text-button" id="retryHelper" hidden>Retry system bridge</button>
           </section>
+
+          <section class="settings-block" data-section="mods">
+            <div class="section-title">Mods</div>
+            <div class="mod-list" id="modList"></div>
+            <div class="hint">Mods are JavaScript files in the mods folder. They run in the
+              island's page: they can draw, and they can fire the island's own actions, and
+              nothing else.</div>
+          </section>
         </div>
+      </section>
+
+      <!-- a mod's panel: the mod draws this, the island only opens it ----------- -->
+      <section class="panel" data-panel="mod">
+        <div class="panel-head">
+          <h2 id="modPanelTitle">Mod</h2>
+          <button class="icon-button" data-action="close"></button>
+        </div>
+        <div class="mod-panel" id="modPanelBody"></div>
       </section>
 
       <!-- where everything goes: drag it into place and see it at once -------- -->

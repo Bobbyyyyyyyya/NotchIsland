@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('island', {
     typeof size === 'number' ? { width: size } : size ?? {}),
   pointer: (inside) => ipcRenderer.send('island:pointer', { inside }),
   drag: (phase, deltaY) => ipcRenderer.send('island:drag', { phase, deltaY: deltaY ?? 0 }),
+  mods: {
+    // The mod files themselves. They run here, in the renderer, which has no Node and
+    // no files of its own — the main process only ever sees what they register.
+    load: () => ipcRenderer.invoke('mods:list'),
+  },
   on: (channel, listener) => {
     if (!INBOUND.includes(channel)) throw new Error(`channel ${channel} is not available`);
     const handler = (_event, payload) => listener(payload);

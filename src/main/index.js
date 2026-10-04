@@ -14,6 +14,7 @@ const { Hotkeys } = require('./hotkeys');
 const { Island } = require('./island');
 const { MediaRemoteBridge } = require('./media-remote');
 const { copyState, trimForPush } = require('./snapshot');
+const mods = require('./mods');
 const { Updater } = require('./updater');
 
 /**
@@ -56,6 +57,10 @@ const state = {
   helper: { available: false, reason: 'starting', capabilities: {} },
   hotkeys: {},
   compact: { right: [], left: [] },
+  // What the loaded mods brought: ids, labels and icons, never code. The main process
+  // runs no mod code, so this is the whole of what a mod is here — enough to arrange
+  // it, and enough to list it in the settings with a switch.
+  mods: [],
   update: { ...updater.status(), current: app.getVersion() },
 };
 
@@ -112,6 +117,7 @@ async function bootstrap () {
 
   applyPreferences();
   startPolling();
+  mods.ensure();
   updater.start();
 
   if (process.argv.includes('--shot')) await captureReference();
@@ -868,6 +874,24 @@ const actions = {
     prefs.setLayout(layout.normalise(null));
     layoutChanged();
   },
+
+  // ------------------------------------------------------------- the mods
+  //
+  // The renderer hands over what its mods registered, and this is where it becomes
+  // part of the island: the widgets join the row the user arranges, and the panels
+  // join the list the tray and the radio menu draw from.
+
+  'mods.set': ({ mods }) => {
+    state.mods = Array.isArray(mods) ? mods : [];
+    mods.sync(state, prefs, layout);
+  },
+  'mods.toggle': ({ name, on }) => {
+    prefs.save({ mods: { ...prefs.get('mods'), [name]: on !== false } });
+    // The switch has to reach the arrangement, not just the preferences: a mod that
+    // is off takes its widgets out of the row, and that is the whole of the switch.
+    mods.sync(state, prefs, layout);
+    applyPreferences();
+  },
   'layout.profile': ({ name }) => {
     prefs.useProfile(name);
     layoutChanged();
@@ -920,6 +944,7 @@ function cycleDevice (isInput) {
 }
 
 ipcMain.handle('state:request', () => snapshot());
+ipcMain.handle('mods:list', () => mods.load());
 ipcMain.on('action', (_event, { name, args }) => run(name, args ?? {}));
 ipcMain.on('island:request-size', (_event, { width, height }) => island.resize(width, { height }));
 ipcMain.on('island:pointer', (_event, { inside }) => {

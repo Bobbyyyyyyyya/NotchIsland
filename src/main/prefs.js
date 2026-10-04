@@ -28,6 +28,10 @@ const DEFAULTS = {
   profiles: {},
   profile: layout.DEFAULT_PROFILE,
 
+  // Which mods are switched on, by the mod's own id. Absent means on: a mod that has
+  // never been touched is a mod that is running.
+  mods: {},
+
   hotkeys: {
     enabled: true,
     // Some setups cannot hand F7…F12 to an app; this adds a modifier as a fallback.
