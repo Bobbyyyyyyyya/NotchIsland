@@ -104,7 +104,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
-  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), box-shadow 0.25s var(--ease);
 }
 
 /* ------------------------------------------------------------- charging */
@@ -134,6 +134,23 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
    0%, 100% { opacity: 1; }
    50% { opacity: 0.6; }
 }
+
+/* --------------------------------------------------------------- locking */
+
+/*
+ * Locked: a red edge-light around the pill, so a locked island says why it
+ * stays shut. Steady rather than breathing — a lock is a state, not an event.
+ * Mostly inset for the same reason as the charging halo: the overlay window
+ * is exactly as wide as the island, so anything drawn outside the border box
+ * would be sliced off on the sides and the top.
+ */
+#island.locked {
+  border-color: rgba(255, 69, 58, 0.55);
+  box-shadow: var(--shadow), inset 0 0 14px 0 rgba(255, 69, 58, 0.22), 0 0 10px 0 rgba(255, 69, 58, 0.3);
+}
+/* Locked invites nothing: the hover edge-light stays red instead of turning
+   white, so hovering never suggests the island is about to open. */
+#island.locked:hover { border-color: rgba(255, 69, 58, 0.55); }
 
 /*
  * The charge visual is the battery itself, the way Apple draws it: an outline
@@ -527,8 +544,6 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 }
 .lock-badge[hidden] { display: none; }
 .lock-badge .icon { width: 9px; height: 9px; }
-/* Locked invites nothing: no hover edge-light while the island stays shut. */
-#island.locked:hover { border-color: var(--hairline); }
 
 #island[data-state="compact"] .arm { opacity: 1; }
 /*
