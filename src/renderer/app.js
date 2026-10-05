@@ -100,12 +100,6 @@ function hexToRgb (hex) {
   return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
 }
 
-/** Readable text on a picked colour: white on dark, near-black on light. */
-function textOn (hex) {
-  const [r, g, b] = hexToRgb(hex);
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#1c1c1e' : '#ffffff';
-}
-
 /** A picked colour as the translucent wash the widgets wear. */
 function tintWash (hex, alpha) {
   const [r, g, b] = hexToRgb(hex);
@@ -139,9 +133,11 @@ const TINT_FALLBACK = {
 function applyTint (node, id, state) {
   const color = state.prefs?.island?.tints?.[id];
   if (!isHexColor(color)) return;
+  // The wash is translucent over a black pill, so the composite stays dark no
+  // matter the pick: white reads on all of it, dark would vanish into it.
   node.dataset.tinted = '1';
   node.style.setProperty('--wtint-bg', tintWash(color, 0.22));
-  node.style.setProperty('--wtint-fg', textOn(color));
+  node.style.setProperty('--wtint-fg', '#ffffff');
 }
 
 /**

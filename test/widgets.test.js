@@ -193,7 +193,6 @@ const code = [
   grab('widgetValue'),
   grab('isHexColor'),
   grab('hexToRgb'),
-  grab('textOn'),
   grab('tintWash'),
   grab('applyTint'),
   grab('syncPicker'),
@@ -203,7 +202,7 @@ const code = [
   grab('renderWidgets'),
 ].join('\n\n');
 
-const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, textOn, tintWash, syncPicker, pickSwatch };`)(...Object.values(sandbox));
+const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch };`)(...Object.values(sandbox));
 
 const base = {
   media: { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', artwork: null, duration: 246, elapsed: 74, rate: 1, playbackState: 1 },
@@ -347,21 +346,18 @@ test('a held microphone wears an orange dot', () => {
 });
 
 test('a picked colour stays readable', () => {
-  assert.strictEqual(api.textOn('#000000'), '#ffffff', 'white on black');
-  assert.strictEqual(api.textOn('#ffffff'), '#1c1c1e', 'near-black on white');
-  assert.strictEqual(api.textOn('#0a84ff'), '#ffffff', 'white on bluetooth blue');
   assert.strictEqual(api.tintWash('#bf5af2', 0.22), 'rgba(191, 90, 242, 0.22)');
   assert.ok(!api.isHexColor('red') && !api.isHexColor('#fff') && !api.isHexColor(null), 'only #rrggbb paints');
 });
 
 test('a tinted widget wears its colour', () => {
-  const tinted = { ...base, prefs: { ...base.prefs, island: { ...base.prefs.island, tints: { media: '#ff0000' } } } };
+  const tinted = { ...base, prefs: { ...base.prefs, island: { ...base.prefs.island, tints: { media: '#ffd60a' } } } };
   row(tinted);
   const kids = byId.get('armRight').children;
   const media = kids.find((kid) => kid.dataset.widget === 'media');
   assert.strictEqual(media.dataset.tinted, '1', 'it is marked as tinted');
-  assert.strictEqual(media.style.props['--wtint-bg'], 'rgba(255, 0, 0, 0.22)');
-  assert.strictEqual(media.style.props['--wtint-fg'], '#ffffff', 'readable on red');
+  assert.strictEqual(media.style.props['--wtint-bg'], 'rgba(255, 214, 10, 0.22)');
+  assert.strictEqual(media.style.props['--wtint-fg'], '#ffffff', 'white, even on yellow');
   const volume = kids.find((kid) => kid.dataset.widget === 'volume');
   assert.strictEqual(volume.dataset.tinted, undefined, 'untinted widgets never know');
 });
