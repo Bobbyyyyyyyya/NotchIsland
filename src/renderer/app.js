@@ -97,20 +97,23 @@ function connectedAddresses (devices) {
 }
 
 /**
- * A device that just connected says so in the row for a few seconds: the widget
- * swells, the icon gives its ripple and the pill reads "Connected to …" before it
- * settles back to the battery percentage. The greeting lives in the view rather
- * than in the node, so a re-render cannot take it away halfway.
+ * A device that just connected says so for a few seconds: the island breathes
+ * a blue halo the way it breathes amber-to-green while charging, and the pill
+ * reads "Connected to …" before it settles back to the battery percentage. The
+ * greeting lives in the view rather than in the node, so a re-render cannot
+ * take it away halfway.
  */
 const HELLO_MS = 2600;
 let helloTimer = null;
 
 function greetBluetooth (name) {
   view.bluetoothHello = name;
+  root.classList.add('bt-glow');
   clearTimeout(helloTimer);
   helloTimer = setTimeout(() => {
     if (view.bluetoothHello !== name) return;
     view.bluetoothHello = null;
+    root.classList.remove('bt-glow');
     if (!view.snapshot) return;
     renderWidgets(view.snapshot);
     requestSize(); // the pill was wider than the circle it turns back into
@@ -291,7 +294,6 @@ const WIDGETS = {
         label.className = 'label';
         label.textContent = hello;
         node.append(label);
-        node.classList.add('bt-connect');
         node.title = `Connected to ${hello}`;
         return node;
       }
@@ -309,13 +311,6 @@ const WIDGETS = {
         node.append(label);
       }
       node.title = tracked ? `${tracked.name} ${Math.round(tracked.battery * 100)}%` : anyConnected ? anyConnected.name : 'No accessory connected';
-      // An Apple accessory that just connected gets a little hello: the icon
-      // ripples once, the way a device acknowledges a pairing. Only when the
-      // connected device actually changes, not on every battery tick.
-      if (tracked && view.lastBluetooth !== tracked.address) {
-        view.lastBluetooth = tracked.address;
-        node.classList.add('bt-connect');
-      }
       if (!anyConnected) return null;
       if (!tracked) node.classList.add('dim');
       return node;

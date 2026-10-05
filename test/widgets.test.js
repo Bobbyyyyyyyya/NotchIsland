@@ -153,7 +153,7 @@ for (let n = wStart; n < app.length; n++) {
 const sent = [];
 const view = {
   snapshot: null, widgetSignature: '', widgetNodes: new Map(), widgetValues: undefined,
-  connectedBluetooth: null, bluetoothHello: null, lastBluetooth: null,
+  connectedBluetooth: null, bluetoothHello: null,
   layout: null, state: 'compact', maxWidth: 560,
   notch: { detected: true, width: 220, height: 38 }, frame: { width: 300, islandHeight: 32 },
 };
