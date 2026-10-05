@@ -197,12 +197,13 @@ const code = [
   grab('tintWash'),
   grab('applyTint'),
   grab('syncPicker'),
+  grab('pickSwatch'),
   grab('renderPrivacy'),
   app.slice(wFrom, wEnd),
   grab('renderWidgets'),
 ].join('\n\n');
 
-const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, textOn, tintWash, syncPicker };`)(...Object.values(sandbox));
+const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, textOn, tintWash, syncPicker, pickSwatch };`)(...Object.values(sandbox));
 
 const base = {
   media: { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', artwork: null, duration: 246, elapsed: 74, rate: 1, playbackState: 1 },
@@ -375,4 +376,16 @@ test('a picker being used keeps what the finger chose', () => {
   sandbox.document.activeElement = null;
   api.syncPicker(node, '#000000');
   assert.strictEqual(node.value, '#000000', 'an idle control still syncs');
+});
+
+test('a swatch click becomes the prefs patch its strip stands for', () => {
+  sent.length = 0;
+  api.pickSwatch({ dataset: { pick: 'tint:media', swatch: '#ff0000' } });
+  api.pickSwatch({ dataset: { pick: 'accent', swatch: '' } });
+  api.pickSwatch({ dataset: { pick: 'pill', swatch: '#000000' } });
+  assert.deepStrictEqual(sent.map((call) => call.args.patch), [
+    { island: { tints: { media: '#ff0000' } } },
+    { island: { accent: null } },
+    { island: { pill: '#000000' } },
+  ]);
 });

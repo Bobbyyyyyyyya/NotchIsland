@@ -144,6 +144,46 @@ function applyTint (node, id, state) {
   node.style.setProperty('--wtint-fg', textOn(color));
 }
 
+/**
+ * The palette the settings offer instead of the native colour popup, which
+ * cannot be relied on inside this window. Plain buttons: they always click.
+ */
+const SWATCHES = ['#ff453a', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2', '#ff375f', '#ffffff', '#8e8e93', '#000000'];
+
+/**
+ * Fills a strip with swatches once, then marks the picked one. An empty
+ * colour means unset (the auto button): it clears back to the default look.
+ */
+function paintSwatches (box, pick, current, autoTitle) {
+  if (!box) return;
+  if (!box.childElementCount) {
+    const colors = [...(autoTitle ? [{ color: '', title: autoTitle }] : []),
+      ...SWATCHES.map((color) => ({ color, title: color }))];
+    box.replaceChildren(...colors.map(({ color, title }) => {
+      const button = document.createElement('button');
+      button.className = `swatch${color ? '' : ' auto'}`;
+      button.dataset.pick = pick;
+      button.dataset.swatch = color;
+      button.title = title;
+      if (color) button.style.setProperty('--swatch', color);
+      return button;
+    }));
+  }
+  const want = current ?? null;
+  for (const button of box.querySelectorAll('[data-swatch]')) {
+    button.classList.toggle('selected', (button.dataset.swatch || null) === want);
+  }
+}
+
+/** A swatch click becomes the prefs patch its strip stands for. */
+function pickSwatch (button) {
+  const [kind, id] = String(button.dataset.pick ?? '').split(':');
+  const color = button.dataset.swatch || null;
+  if (kind === 'pill') api.action('prefs.set', { patch: { island: { pill: color ?? '#000000' } } });
+  else if (kind === 'accent') api.action('prefs.set', { patch: { island: { accent: color } } });
+  else if (kind === 'tint' && id) api.action('prefs.set', { patch: { island: { tints: { [id]: color } } } });
+}
+
 /** The addresses currently connected, so the next render can spot an arrival. */
 function connectedAddresses (devices) {
   return new Set(devices.filter((device) => device.connected).map((device) => device.address));
@@ -1100,9 +1140,8 @@ function syncPicker (node, value) {
 }
 
 /**
- * One colour picker per tintable widget. Built once — rebuilding it on every
- * push would pull the native picker out from under a dragging finger — and
- * only re-synced when a value actually moved.
+ * One swatch strip per tintable widget, each starting with the revert-to-
+ * default. Built once like the strips above; only the selection re-syncs.
  */
 function renderTintList (state) {
   const list = el('tintList');
@@ -1110,20 +1149,20 @@ function renderTintList (state) {
   const tints = state.prefs.island.tints ?? {};
   if (!list.childElementCount) {
     list.replaceChildren(...Object.keys(TINT_FALLBACK).filter((id) => WIDGETS[id]).map((id) => {
-      const row = document.createElement('label');
+      const row = document.createElement('div');
       row.className = 'row';
       const name = document.createElement('span');
       name.textContent = WIDGETS[id].label;
-      const picker = document.createElement('input');
-      picker.type = 'color';
-      picker.dataset.tint = id;
-      row.append(name, picker);
+      const strip = document.createElement('div');
+      strip.className = 'swatches';
+      strip.dataset.tintStrip = id;
+      row.append(name, strip);
       return row;
     }));
   }
-  for (const picker of list.querySelectorAll('input[data-tint]')) {
-    const want = isHexColor(tints[picker.dataset.tint]) ? tints[picker.dataset.tint] : TINT_FALLBACK[picker.dataset.tint];
-    syncPicker(picker, want);
+  for (const strip of list.querySelectorAll('[data-tint-strip]')) {
+    const id = strip.dataset.tintStrip;
+    paintSwatches(strip, `tint:${id}`, isHexColor(tints[id]) ? tints[id] : null, 'Widget default');
   }
 }
 
@@ -1135,8 +1174,8 @@ function renderSettings (state) {
   // stored value over it would throw the pick away the moment any state push
   // re-renders the panel underneath the native popup.
   syncPicker(el('styleSelect'), prefs.island.style);
-  syncPicker(el('pillColor'), isHexColor(prefs.island.pill) ? prefs.island.pill : '#000000');
-  syncPicker(el('accentColor'), isHexColor(prefs.island.accent) ? prefs.island.accent : '#0a84ff');
+  paintSwatches(el('pillSwatches'), 'pill', isHexColor(prefs.island.pill) ? prefs.island.pill : '#000000');
+  paintSwatches(el('accentSwatches'), 'accent', isHexColor(prefs.island.accent) ? prefs.island.accent : null, 'System default');
   renderTintList(state);
   el('mediaKeysToggle').checked = prefs.hotkeys.mediaKeys === true;
   el('loginToggle').checked = prefs.launchAtLogin === true;
@@ -2011,6 +2050,12 @@ document.addEventListener('click', (event) => {
     return;
   }
   if (root.classList.contains('dragging')) return;
+  const swatch = event.target.closest('[data-swatch]');
+  if (swatch) {
+    event.stopPropagation();
+    pickSwatch(swatch);
+    return;
+  }
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action) {
     event.stopPropagation();
@@ -2043,10 +2088,6 @@ document.addEventListener('change', (event) => {
   if (id === 'styleSelect') api.action('prefs.set', { patch: { island: { style: value } } });
   if (id === 'hoverToggle') api.action('prefs.set', { patch: { island: { hoverToExpand: checked } } });
   if (id === 'lockToggle') api.action('prefs.set', { patch: { island: { locked: checked } } });
-  if (id === 'pillColor') api.action('prefs.set', { patch: { island: { pill: value } } });
-  if (id === 'accentColor') api.action('prefs.set', { patch: { island: { accent: value } } });
-  const tint = event.target.dataset?.tint;
-  if (tint) api.action('prefs.set', { patch: { island: { tints: { [tint]: event.target.value } } } });
   if (id === 'mediaKeysToggle') api.action('prefs.set', { patch: { hotkeys: { mediaKeys: checked } } });
   if (id === 'loginToggle') api.action('prefs.set', { patch: { launchAtLogin: checked } });
   if (id === 'autoUpdateToggle') api.action('prefs.set', { patch: { updates: { autoCheck: checked } } });

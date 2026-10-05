@@ -1365,19 +1365,23 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .switch:checked { background: var(--accent, #30d158); }
 .switch:checked::after { transform: translateX(14px); }
 
-/* Native colour wells, sized to sit in a settings row the way switches do. */
-input[type="color"] {
-  width: 30px;
+/* Colour swatches: plain buttons in a wrapping strip, so picking never needs
+   the native popup. The picked one wears a white ring. */
+.swatches { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; max-width: 240px; }
+.swatch {
+  width: 18px;
   height: 18px;
+  border-radius: 50%;
+  background: var(--swatch, transparent);
+  border: 0.5px solid rgba(255, 255, 255, 0.3);
   padding: 0;
-  border: 0.5px solid var(--hairline);
-  border-radius: 5px;
-  background: none;
   cursor: pointer;
   flex: none;
+  transition: transform 0.15s var(--ease);
 }
-input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
-input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
+.swatch:hover { transform: scale(1.15); }
+.swatch.selected { outline: 2px solid #fff; outline-offset: 1px; }
+.swatch.auto { background: linear-gradient(135deg, transparent 42%, var(--muted) 44%, var(--muted) 56%, transparent 58%); }
 
 .hotkey-list { display: flex; flex-direction: column; gap: 1px; }
 .hotkey {
