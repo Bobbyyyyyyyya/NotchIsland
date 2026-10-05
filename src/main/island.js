@@ -382,7 +382,6 @@ class Island {
       && sent.radius === frame.radius && sent.state === this.state;
     this.frame = frame;
     if (identical) return;
-    this.onFrame?.();
     if (!this.window || this.window.isDestroyed()) return;
     this._lastSent = {
       x: frame.x, y: frame.y, width: frame.width, height: frame.height,

@@ -1116,15 +1116,6 @@ function startPolling () {
   }, 250);
   setInterval(push, 10_000);
 
-  if (process.argv.includes('--dev')) {
-    let frames = 0;
-    setInterval(() => {
-      console.log(`[perf] window frames in the last second: ${frames}`);
-      frames = 0;
-    }, 1000);
-    island.onFrame = () => { frames += 1; };
-  }
-
   clipboardTimer = setInterval(pollClipboard, CLIPBOARD_POLL_MS);
   cpuTimer = setInterval(() => {
     const cpus = os.cpus();
