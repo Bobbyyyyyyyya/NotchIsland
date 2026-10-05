@@ -1092,6 +1092,14 @@ function emptyNode (message) {
 }
 
 /**
+ * Writes a picker or select from stored state, unless the user is holding it
+ * open right now — see renderSettings.
+ */
+function syncPicker (node, value) {
+  if (node && document.activeElement !== node && node.value !== value) node.value = value;
+}
+
+/**
  * One colour picker per tintable widget. Built once — rebuilding it on every
  * push would pull the native picker out from under a dragging finger — and
  * only re-synced when a value actually moved.
@@ -1115,17 +1123,20 @@ function renderTintList (state) {
   }
   for (const picker of list.querySelectorAll('input[data-tint]')) {
     const want = isHexColor(tints[picker.dataset.tint]) ? tints[picker.dataset.tint] : TINT_FALLBACK[picker.dataset.tint];
-    if (picker.value !== want) picker.value = want;
+    syncPicker(picker, want);
   }
 }
 
 function renderSettings (state) {
   const prefs = state.prefs;
-  el('styleSelect').value = prefs.island.style;
   el('hoverToggle').checked = prefs.island.hoverToExpand !== false;
   el('lockToggle').checked = prefs.island.locked === true;
-  el('pillColor').value = isHexColor(prefs.island.pill) ? prefs.island.pill : '#000000';
-  el('accentColor').value = isHexColor(prefs.island.accent) ? prefs.island.accent : '#0a84ff';
+  // A control being picked right now keeps what the finger chose: syncing the
+  // stored value over it would throw the pick away the moment any state push
+  // re-renders the panel underneath the native popup.
+  syncPicker(el('styleSelect'), prefs.island.style);
+  syncPicker(el('pillColor'), isHexColor(prefs.island.pill) ? prefs.island.pill : '#000000');
+  syncPicker(el('accentColor'), isHexColor(prefs.island.accent) ? prefs.island.accent : '#0a84ff');
   renderTintList(state);
   el('mediaKeysToggle').checked = prefs.hotkeys.mediaKeys === true;
   el('loginToggle').checked = prefs.launchAtLogin === true;

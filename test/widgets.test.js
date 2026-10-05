@@ -196,12 +196,13 @@ const code = [
   grab('textOn'),
   grab('tintWash'),
   grab('applyTint'),
+  grab('syncPicker'),
   grab('renderPrivacy'),
   app.slice(wFrom, wEnd),
   grab('renderWidgets'),
 ].join('\n\n');
 
-const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, textOn, tintWash };`)(...Object.values(sandbox));
+const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, textOn, tintWash, syncPicker };`)(...Object.values(sandbox));
 
 const base = {
   media: { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', artwork: null, duration: 246, elapsed: 74, rate: 1, playbackState: 1 },
@@ -362,4 +363,16 @@ test('a tinted widget wears its colour', () => {
   assert.strictEqual(media.style.props['--wtint-fg'], '#ffffff', 'readable on red');
   const volume = kids.find((kid) => kid.dataset.widget === 'volume');
   assert.strictEqual(volume.dataset.tinted, undefined, 'untinted widgets never know');
+});
+
+test('a picker being used keeps what the finger chose', () => {
+  // A state push re-rendering the panel underneath the native popup must not
+  // throw the pick away before its change event even fires.
+  const node = { value: '#ff0000' };
+  sandbox.document.activeElement = node;
+  api.syncPicker(node, '#000000');
+  assert.strictEqual(node.value, '#ff0000', 'a focused control is not stomped');
+  sandbox.document.activeElement = null;
+  api.syncPicker(node, '#000000');
+  assert.strictEqual(node.value, '#000000', 'an idle control still syncs');
 });
