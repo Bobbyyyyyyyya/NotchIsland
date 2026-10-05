@@ -19,6 +19,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CallKit/CallKit.h>
 #import <CoreAudio/CoreAudio.h>
+#import <CoreMedia/CMFormatDescription.h>
+#import <CoreMediaIO/CoreMediaIO.h>
 #import <IOKit/IOKitLib.h>
 #import <IOKit/hid/IOHIDManager.h>
 #import <IOKit/ps/IOPSKeys.h>
@@ -128,6 +130,75 @@ static NSInteger DeviceChannelCount(AudioObjectID device, BOOL isInput) {
     }
     free(buffers);
     return channels;
+}
+
+#pragma mark - Camera (CoreMediaIO)
+
+// Whether a CMIO device carries a picture: microphones show up in CMIO too and
+// run while anyone captures from them, and the mic has its own dot already.
+static BOOL CMIODeviceHasVideoStream(CMIODeviceID device) {
+    CMIOObjectPropertyAddress address = {
+        kCMIODevicePropertyStreams, kCMIOObjectPropertyScopeGlobal, kCMIOObjectPropertyElementMain};
+    UInt32 size = 0;
+    if (CMIOObjectGetPropertyDataSize(device, &address, 0, NULL, &size) != noErr) return NO;
+    UInt32 count = size / sizeof(CMIOStreamID);
+    if (count == 0 || size > 8192) return NO;
+    CMIOStreamID *streams = calloc(count, sizeof(CMIOStreamID));
+    if (!streams) return NO;
+    BOOL video = NO;
+    UInt32 used = 0;
+    if (CMIOObjectGetPropertyData(device, &address, 0, NULL, size, &used, streams) == noErr) {
+        for (UInt32 i = 0; i < count && !video; i++) {
+            CMIOObjectPropertyAddress format = {
+                kCMIOStreamPropertyFormatDescription, kCMIOObjectPropertyScopeGlobal,
+                kCMIOObjectPropertyElementMain};
+            CMFormatDescriptionRef description = NULL;
+            UInt32 descriptionSize = sizeof(description);
+            UInt32 descriptionUsed = 0;
+            if (CMIOObjectGetPropertyData(streams[i], &format, 0, NULL,
+                                          descriptionSize, &descriptionUsed, &description) == noErr
+                && description) {
+                if (CMFormatDescriptionGetMediaType(description) == kCMMediaType_Video) video = YES;
+                CFRelease(description);
+            }
+        }
+    }
+    free(streams);
+    return video;
+}
+
+// Whether any camera is streaming right now. Reading the running state asks
+// nothing of the user: no session is opened, so there is no permission prompt.
+static BOOL CameraIsActive(void) {
+    CMIOObjectPropertyAddress address = {
+        kCMIOHardwarePropertyDevices, kCMIOObjectPropertyScopeGlobal, kCMIOObjectPropertyElementMain};
+    UInt32 size = 0;
+    if (CMIOObjectGetPropertyDataSize(kCMIOObjectSystemObject, &address, 0, NULL, &size) != noErr)
+        return NO;
+    UInt32 count = size / sizeof(CMIOObjectID);
+    if (count == 0 || size > 8192) return NO;
+    CMIOObjectID *devices = calloc(count, sizeof(CMIOObjectID));
+    if (!devices) return NO;
+    BOOL active = NO;
+    UInt32 used = 0;
+    if (CMIOObjectGetPropertyData(kCMIOObjectSystemObject, &address, 0, NULL, size, &used, devices) == noErr) {
+        for (UInt32 i = 0; i < count && !active; i++) {
+            if (!CMIODeviceHasVideoStream(devices[i])) continue;
+            CMIOObjectPropertyAddress running = {
+                kCMIODevicePropertyDeviceIsRunningSomewhere,
+                kCMIOObjectPropertyScopeWildcard, kCMIOObjectPropertyElementWildcard};
+            UInt32 streaming = 0;
+            UInt32 streamingSize = sizeof(streaming);
+            UInt32 streamingUsed = 0;
+            if (CMIOObjectGetPropertyData(devices[i], &running, 0, NULL,
+                                          streamingSize, &streamingUsed, &streaming) == noErr
+                && streaming) {
+                active = YES;
+            }
+        }
+    }
+    free(devices);
+    return active;
 }
 
 #pragma mark - Volume
@@ -896,6 +967,9 @@ static double MRNumber (NSDictionary *info, CFStringRef key) {
         @"muted": @(InputIsMuted()),
         @"volume": @(MAX(0, InputVolume())),
         @"active": [self activeInputNames],
+        // The camera rides the input poll: it changes on the same human
+        // timescale, and the signature below re-emits on any flip of it.
+        @"cameraActive": @(CameraIsActive()),
     };
     NSString *signature = [payload description];
     if ([signature isEqualToString:self.inputSignature]) return;

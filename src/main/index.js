@@ -47,6 +47,9 @@ const state = {
   media: { title: '', artist: '', album: '', artwork: null, duration: 0, elapsed: 0, rate: 0, playbackState: 0, source: '', preferredApp: null, controlled: false },
   volume: { value: 0, muted: false },
   input: { muted: false, volume: 1, active: [] },
+  // Whether the camera is streaming. The helper watches CoreMediaIO for that,
+  // so this flips without any permission prompt of its own.
+  camera: { active: false },
   devices: { list: [], output: 0, input: 0 },
   battery: { level: 1, charging: false, minutes: -1, full: true },
   bluetooth: { devices: [] },
@@ -1040,6 +1043,7 @@ function onHelperEvent (message) {
       break;
     case 'input':
       state.input = { muted: message.muted, volume: message.volume, active: message.active ?? [] };
+      state.camera = { active: message.cameraActive === true };
       break;
     case 'battery':
       batteryReported = true;

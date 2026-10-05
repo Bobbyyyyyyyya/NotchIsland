@@ -637,10 +637,30 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 }
 /* A widget that just arrived scales in rather than blinking on: the window
    springs wider underneath it, so the two moves read as one. */
-.widget.enter, .bubble.enter { animation: widgetEnter 0.42s var(--spring); }
+.widget.enter, .bubble.enter, .privacy-dot.enter { animation: widgetEnter 0.42s var(--spring); }
 @keyframes widgetEnter {
   from { opacity: 0; transform: scale(0.5); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/*
+ * The privacy dots: green while the camera streams, orange while an app holds
+ * the microphone. Big, glowing and gently pulsing, the way a recording light
+ * should read at a glance. They are drawn by the island itself rather than by
+ * a widget, so no arrangement can move them, shrink them or take them away.
+ */
+.privacy-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  animation: privacyPulse 1.8s ease-in-out infinite;
+}
+.privacy-dot.camera { background: var(--green); box-shadow: 0 0 10px 0 rgba(48, 209, 88, 0.65); }
+.privacy-dot.mic { background: var(--orange); box-shadow: 0 0 10px 0 rgba(255, 159, 10, 0.65); }
+@keyframes privacyPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 .widget .label {
   font-size: 11.5px;

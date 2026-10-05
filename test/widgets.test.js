@@ -191,6 +191,7 @@ const code = [
   grab('modWidgetDef'),
   grab('popChangedWidgets'),
   grab('widgetValue'),
+  grab('renderPrivacy'),
   app.slice(wFrom, wEnd),
   grab('renderWidgets'),
 ].join('\n\n');
@@ -312,4 +313,28 @@ test('a paused song disappears', () => {
   const paused = { ...base, media: { ...base.media, rate: 0, playbackState: 0 } };
   const widget = shows(paused, 'media');
   assert.strictEqual(widget, null, 'it disappears from the row when paused');
+});
+
+test('a streaming camera wears a green dot that cannot be arranged away', () => {
+  const dots = (state) => byId.get('armRight').children.filter((kid) => kid.classes.has('privacy-dot'));
+  assert.strictEqual(dots(base).length, 0, 'silence wears nothing');
+  const live = { ...base, camera: { active: true } };
+  row(live);
+  assert.strictEqual(dots(live).length, 1, 'one dot while streaming');
+  assert.ok(dots(live)[0].classes.has('camera'), 'and it is the green one');
+  assert.strictEqual(dots(live)[0].title, 'Camera in use');
+  // A layout that never heard of the dot still carries it: it is drawn by the
+  // island, not arranged into it.
+  const unarranged = { ...live, layout: { ...live.layout, arranged: { ...live.layout.arranged, compact: { right: [], left: [] } } } };
+  row(unarranged);
+  assert.strictEqual(dots(unarranged).length, 1, 'no arrangement takes it away');
+});
+
+test('a held microphone wears an orange dot', () => {
+  const dots = (state) => byId.get('armRight').children.filter((kid) => kid.classes.has('privacy-dot'));
+  const live = { ...base, input: { ...base.input, active: ['Voice Memos'] } };
+  row(live);
+  assert.strictEqual(dots(live).length, 1, 'one dot while held');
+  assert.ok(dots(live)[0].classes.has('mic'), 'and it is the orange one');
+  assert.strictEqual(dots(live)[0].title, 'In use by Voice Memos');
 });

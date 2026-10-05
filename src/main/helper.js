@@ -23,6 +23,8 @@ const FRAMEWORKS = [
   '-framework', 'AppKit',
   '-framework', 'MediaPlayer',
   '-framework', 'CoreAudio',
+  '-framework', 'CoreMedia',
+  '-framework', 'CoreMediaIO',
   '-framework', 'IOKit',
   '-framework', 'IOBluetooth',
   '-framework', 'SystemConfiguration',

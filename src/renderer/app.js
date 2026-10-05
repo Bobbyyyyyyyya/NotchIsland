@@ -601,6 +601,48 @@ function updateBubble (node, activity) {
   paintBubble(node, activity);
 }
 
+/**
+ * The privacy dots: green while the camera streams, orange while an app holds
+ * the microphone. They are not widgets — no arrangement carries them, no
+ * profile can drop them, and the row never sheds them. They ride at the outer
+ * end of the right arm, where the iPhone wears its recording indicator.
+ */
+function renderPrivacy (state) {
+  const wanted = [];
+  if (state.camera?.active) wanted.push({ id: 'camera', title: 'Camera in use' });
+  const users = state.input?.active ?? [];
+  if (users.length) {
+    wanted.push({
+      id: 'mic',
+      title: users.length === 1 ? `In use by ${users[0]}` : `In use by ${users.length} apps`,
+    });
+  }
+  // Reused across renders like the bubbles, so the pulse never restarts on a
+  // state push that has nothing to do with recording.
+  if (!view.privacyNodes) view.privacyNodes = new Map();
+  const seen = new Set();
+  const nodes = [];
+  for (const { id, title } of wanted) {
+    seen.add(id);
+    let node = view.privacyNodes.get(id);
+    if (!node) {
+      node = document.createElement('div');
+      node.className = `privacy-dot ${id}`;
+      node.classList.add('enter');
+      node.addEventListener('animationend', (event) => {
+        if (event.target === node) node.classList.remove('enter');
+      });
+      view.privacyNodes.set(id, node);
+    }
+    node.title = title;
+    nodes.push(node);
+  }
+  for (const id of [...view.privacyNodes.keys()]) {
+    if (!seen.has(id)) view.privacyNodes.delete(id);
+  }
+  return nodes;
+}
+
 /** Horizontal drag to dismiss. */
 function bindSwipe (node, activity) {
   let start = null;
@@ -775,10 +817,11 @@ function renderWidgets (state) {
   }
 
   const bubbles = renderBubbles(state);
+  const privacy = renderPrivacy(state);
   root.classList.toggle('bubbles', bubbles.length > 0);
   view.bubbleCount = bubbles.length;
 
-  el('armRight').replaceChildren(...bubbles, ...withStatus.map((id) => built[id]).filter(Boolean));
+  el('armRight').replaceChildren(...bubbles, ...withStatus.map((id) => built[id]).filter(Boolean), ...privacy);
   el('armLeft').replaceChildren(...arms.left.map((id) => built[id]).filter(Boolean));
   // A bubble must not bounce because the volume changed.
   popChangedWidgets(Object.values(built), state);
@@ -1729,19 +1772,22 @@ function requestSize () {
     // has the most to give, so nothing is ever pushed past the island's edge.
     const arms = [left, right].sort((a, b) => armContentWidth(b) - armContentWidth(a));
     const ordinary = (node) => !node.classList.contains('bubble')
+      && !node.classList.contains('privacy-dot')
       && !node.classList.contains('bt-hello')
       && !node.classList.contains('keep')
       && node.dataset.widget !== 'battery';
     // A configured battery is the last row member to go. With three on an arm, another
     // widget leaves before it; only if nothing else remains does the battery go.
+    // Bubbles and privacy dots never go: an event must stay visible, and so must
+    // the fact that the camera or the microphone is live.
     const candidate = arms
       .map((arm) => [...arm.children].reverse().find(ordinary))
       .find(Boolean) ?? arms
-      .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble') && child.dataset.widget !== 'battery'))
+      .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble') && !child.classList.contains('privacy-dot') && child.dataset.widget !== 'battery'))
       .find(Boolean) ?? arms
-      .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble')))
+      .map((arm) => [...arm.children].reverse().find((child) => !child.classList.contains('bubble') && !child.classList.contains('privacy-dot')))
       .find(Boolean);
-    if (!candidate) break; // only bubbles left; never drop an active event
+    if (!candidate) break; // only bubbles and privacy dots left; never drop those
     candidate.remove();
   }
 
