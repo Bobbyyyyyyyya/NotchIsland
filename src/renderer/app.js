@@ -237,7 +237,7 @@ const WIDGETS = {
   battery: {
     label: 'Battery',
     render (state) {
-      const { level, charging, minutes } = state.battery;
+      const { level, charging } = state.battery;
       const node = document.createElement('div');
       node.className = 'widget readout';
       node.dataset.panelOpen = 'battery';
@@ -253,7 +253,7 @@ const WIDGETS = {
       label.className = 'label';
       label.textContent = `${percent}%`;
       node.append(label);
-      node.title = minutes > 0 && !charging ? `${minutes} min left` : `${percent}%`;
+      node.title = `${percent}%`;
       if (percent <= 20 && !charging) node.classList.add('alert');
       return node;
     },
@@ -1248,7 +1248,7 @@ function stopClock () {
 }
 
 function renderBattery (state) {
-   const { level, charging, minutes } = state.battery;
+   const { level, charging } = state.battery;
    const percent = Math.round(level * 100);
    const full = Boolean(state.battery.full);
    const { base, soft } = chargeColor(level);
@@ -1271,7 +1271,7 @@ function renderBattery (state) {
       ? 'Fully charged'
       : charging
         ? 'Charging'
-        : (minutes > 0 ? `${minutes} min left` : 'On battery');
+        : 'On battery';
   }
    const pctEl = el('batteryPanelPercent');
    if (pctEl) pctEl.textContent = `${percent}%`;
