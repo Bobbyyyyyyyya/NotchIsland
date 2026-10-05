@@ -11,7 +11,8 @@
   --muted: rgba(255, 255, 255, 0.52);
   --faint: rgba(255, 255, 255, 0.12);
   --hairline: rgba(255, 255, 255, 0.13);
-  --accent: #0a84ff;
+  /* No --accent default on purpose: unset means the controls keep the look
+     they shipped with, and only a picked colour restyles them. */
   /* The system palette the island paints its features with. */
   --green: #30d158;
   --red: #ff453a;
@@ -99,7 +100,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   height: var(--island-h);
   display: flex;
   flex-direction: column;
-  background: #000000;
+  background: var(--pill, #000000);
   border: 0.5px solid var(--hairline);
   border-radius: var(--radius);
   overflow: hidden;
@@ -588,6 +589,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .widget[data-widget="cpu"] { background: rgba(255, 159, 10, 0.18); color: #ffc27a; }
 .widget[data-widget="volume"],
 .widget[data-widget="clock"] { background: rgba(255, 255, 255, 0.1); }
+/* A picked colour wins over the tint above — but never over a state below, so
+   low-battery red and the charge walk keep talking. */
+.widget[data-tinted] { background: var(--wtint-bg); color: var(--wtint-fg); }
 
 /* States win over the tint: idle is quiet, a warning is unmistakable. */
 .widget.dim { color: var(--muted); background: rgba(255, 255, 255, 0.05); }
@@ -798,7 +802,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 }
 .icon-button:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .icon-button.on { color: #fff; background: rgba(255, 255, 255, 0.16); }
-.text-button { font-size: 11.5px; color: var(--muted); padding: 2px 4px; border-radius: 6px; }
+.text-button { font-size: 11.5px; color: var(--accent, var(--muted)); padding: 2px 4px; border-radius: 6px; }
 .text-button:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 
 .section-title {
@@ -1358,8 +1362,22 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   background: #fff;
   transition: transform 0.15s var(--ease);
 }
-.switch:checked { background: #30d158; }
+.switch:checked { background: var(--accent, #30d158); }
 .switch:checked::after { transform: translateX(14px); }
+
+/* Native colour wells, sized to sit in a settings row the way switches do. */
+input[type="color"] {
+  width: 30px;
+  height: 18px;
+  padding: 0;
+  border: 0.5px solid var(--hairline);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
+input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 
 .hotkey-list { display: flex; flex-direction: column; gap: 1px; }
 .hotkey {

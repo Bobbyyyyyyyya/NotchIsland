@@ -91,6 +91,59 @@ function tintCharge (node, level) {
   node.style.setProperty('--charge-soft', soft);
 }
 
+/** A hand-edited preferences file can hold anything; only #rrggbb paints. */
+function isHexColor (value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function hexToRgb (hex) {
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+}
+
+/** Readable text on a picked colour: white on dark, near-black on light. */
+function textOn (hex) {
+  const [r, g, b] = hexToRgb(hex);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#1c1c1e' : '#ffffff';
+}
+
+/** A picked colour as the translucent wash the widgets wear. */
+function tintWash (hex, alpha) {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * What the colour picker offers before anything is picked: close to what the
+ * widget wears on its own, so the first pick is a tweak rather than a shock.
+ * The charger is missing on purpose — its colour is the charge level talking.
+ */
+const TINT_FALLBACK = {
+  media: '#bf5af2',
+  volume: '#ffffff',
+  mic: '#ffffff',
+  battery: '#30d158',
+  bluetooth: '#0a84ff',
+  meeting: '#ffffff',
+  airdrop: '#0a84ff',
+  clipboard: '#bf5af2',
+  clock: '#ffffff',
+  cpu: '#ff9f0a',
+  update: '#30d158',
+};
+
+/**
+ * Dresses a widget in its picked colour. The stylesheet carries the rule and
+ * the node only carries the values, so an unset widget never knows any of
+ * this happened — and a state like low-battery red still wins.
+ */
+function applyTint (node, id, state) {
+  const color = state.prefs?.island?.tints?.[id];
+  if (!isHexColor(color)) return;
+  node.dataset.tinted = '1';
+  node.style.setProperty('--wtint-bg', tintWash(color, 0.22));
+  node.style.setProperty('--wtint-fg', textOn(color));
+}
+
 /** The addresses currently connected, so the next render can spot an arrival. */
 function connectedAddresses (devices) {
   return new Set(devices.filter((device) => device.connected).map((device) => device.address));
@@ -737,6 +790,11 @@ function render (snapshot) {
   view.style = snapshot.prefs.island.style;
   view.hoverToExpand = snapshot.prefs.island.hoverToExpand;
   view.locked = snapshot.prefs.island.locked === true;
+  // The theme rides two variables: the pill keeps its black until a colour is
+  // picked, and the accent stays off entirely so the defaults never restyle.
+  setVar('--pill', isHexColor(snapshot.prefs.island.pill) ? snapshot.prefs.island.pill : '#000000');
+  if (isHexColor(snapshot.prefs.island.accent)) root.style.setProperty('--accent', snapshot.prefs.island.accent);
+  else root.style.removeProperty('--accent');
   root.classList.toggle('locked', view.locked);
   const badge = el('lockBadge');
   if (badge) badge.hidden = !view.locked;
@@ -804,6 +862,7 @@ function renderWidgets (state) {
     if (previous) previous.replaceWith(fresh);
     if (!shown.has(id)) fresh.classList.add('enter');
     fresh.dataset.widget = id;
+    applyTint(fresh, id, state);
     view.widgetNodes.set(id, fresh);
     built[id] = fresh;
   }
@@ -1032,11 +1091,42 @@ function emptyNode (message) {
   return node;
 }
 
+/**
+ * One colour picker per tintable widget. Built once — rebuilding it on every
+ * push would pull the native picker out from under a dragging finger — and
+ * only re-synced when a value actually moved.
+ */
+function renderTintList (state) {
+  const list = el('tintList');
+  if (!list) return;
+  const tints = state.prefs.island.tints ?? {};
+  if (!list.childElementCount) {
+    list.replaceChildren(...Object.keys(TINT_FALLBACK).filter((id) => WIDGETS[id]).map((id) => {
+      const row = document.createElement('label');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.textContent = WIDGETS[id].label;
+      const picker = document.createElement('input');
+      picker.type = 'color';
+      picker.dataset.tint = id;
+      row.append(name, picker);
+      return row;
+    }));
+  }
+  for (const picker of list.querySelectorAll('input[data-tint]')) {
+    const want = isHexColor(tints[picker.dataset.tint]) ? tints[picker.dataset.tint] : TINT_FALLBACK[picker.dataset.tint];
+    if (picker.value !== want) picker.value = want;
+  }
+}
+
 function renderSettings (state) {
   const prefs = state.prefs;
   el('styleSelect').value = prefs.island.style;
   el('hoverToggle').checked = prefs.island.hoverToExpand !== false;
   el('lockToggle').checked = prefs.island.locked === true;
+  el('pillColor').value = isHexColor(prefs.island.pill) ? prefs.island.pill : '#000000';
+  el('accentColor').value = isHexColor(prefs.island.accent) ? prefs.island.accent : '#0a84ff';
+  renderTintList(state);
   el('mediaKeysToggle').checked = prefs.hotkeys.mediaKeys === true;
   el('loginToggle').checked = prefs.launchAtLogin === true;
 
@@ -1942,6 +2032,10 @@ document.addEventListener('change', (event) => {
   if (id === 'styleSelect') api.action('prefs.set', { patch: { island: { style: value } } });
   if (id === 'hoverToggle') api.action('prefs.set', { patch: { island: { hoverToExpand: checked } } });
   if (id === 'lockToggle') api.action('prefs.set', { patch: { island: { locked: checked } } });
+  if (id === 'pillColor') api.action('prefs.set', { patch: { island: { pill: value } } });
+  if (id === 'accentColor') api.action('prefs.set', { patch: { island: { accent: value } } });
+  const tint = event.target.dataset?.tint;
+  if (tint) api.action('prefs.set', { patch: { island: { tints: { [tint]: event.target.value } } } });
   if (id === 'mediaKeysToggle') api.action('prefs.set', { patch: { hotkeys: { mediaKeys: checked } } });
   if (id === 'loginToggle') api.action('prefs.set', { patch: { launchAtLogin: checked } });
   if (id === 'autoUpdateToggle') api.action('prefs.set', { patch: { updates: { autoCheck: checked } } });
@@ -1950,6 +2044,11 @@ document.addEventListener('change', (event) => {
 el('retryHelper').addEventListener('click', () => api.action('helper.retry', {}));
 bindArrangeDrag();
 el('updateCheck').addEventListener('click', () => api.action('update.check', {}));
+el('themeReset')?.addEventListener('click', () => api.action('prefs.set', {
+  // Nulls overwrite through the merge, so every override is genuinely gone —
+  // an empty map would only merge into what is already there.
+  patch: { island: { pill: '#000000', accent: null, tints: Object.fromEntries(Object.keys(TINT_FALLBACK).map((id) => [id, null])) } },
+}));
 el('updateInstall').addEventListener('click', () => api.action('update.install', {}));
 
 // ---------------------------------------------------------------- arranging

@@ -14,6 +14,12 @@ const DEFAULTS = {
     // maxWidth: 560,  // removed - now dynamic based on content
     expandedHeight: 240,
     hoverToExpand: true,
+    // Colours: the pill keeps its black; the accent stays unset so switches
+    // stay green and links stay muted until a colour is picked. A tinted
+    // widget wears its colour instead of its built-in one; null means unset.
+    pill: '#000000',
+    accent: null,
+    tints: {},
     // Locked means compact, whatever asks: long-press the island to toggle it.
     locked: false,
     hideOnFullscreen: false,
