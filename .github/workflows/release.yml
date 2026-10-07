@@ -1,6 +1,9 @@
-# Builds, signs, notarizes and publishes a release on every version tag.
+# Builds and publishes a release on every version tag. Signing and
+# notarization happen only when their secrets exist; without them the same
+# flow publishes an unsigned build, exactly like a local `npm run dist`.
 #
-# Required repository secrets (Settings → Secrets → Actions):
+# Optional repository secrets for a warning-free DMG (Settings → Secrets →
+# Actions). Everything else the release needs is already here.
 #
 #   APPLE_CERTIFICATE_P12          the Developer ID certificate, base64-encoded
 #   APPLE_CERTIFICATE_PASSWORD     its import password
@@ -33,6 +36,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Import signing certificate
+        if: secrets.APPLE_CERTIFICATE_P12 != ''
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}

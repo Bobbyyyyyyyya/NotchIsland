@@ -258,8 +258,10 @@ workflow already knows) or from the `origin` remote. Without either one
 stops with an explanation.
 
 The build is unsigned by default, so a *first* install from such a DMG has
-to be opened with right-click → Open, or Gatekeeper will refuse it. Updates
-installed by the updater itself are not quarantined and do not have that problem.
+to be opened with right-click → Open, or Gatekeeper will refuse it.
+Alternatively, `xattr -cr /Applications/Notch\ Island.app` clears the download
+quarantine in one command. Updates installed by the updater itself are not
+quarantined and do not have that problem.
 
 A release build signs and notarizes instead, and then the DMG opens without
 the warning. It needs a Developer ID certificate plus notarization credentials,
