@@ -83,8 +83,7 @@ function roundedRectDistance (x, y, cx, cy, halfWidth, halfHeight, radius) {
   return outside + Math.min(Math.max(dx, dy), 0) - radius;
 }
 
-function fillRoundedRect (canvas, { x, y, width, height, radius, color, samples = 4 }) {
-  const step = 1 / samples;
+function fillRoundedRect (canvas, { x, y, width, height, radius, color, samples = 4 }) {  const step = 1 / samples;
   for (let py = Math.floor(y) - 1; py < y + height + 1; py++) {
     for (let px = Math.floor(x) - 1; px < x + width + 1; px++) {
       let hits = 0;
@@ -102,13 +101,35 @@ function fillRoundedRect (canvas, { x, y, width, height, radius, color, samples 
   }
 }
 
+/** Signed distance to a circle, for the camera lens. */
+function circleDistance (x, y, cx, cy, radius) {
+  return Math.hypot(x - cx, y - cy) - radius;
+}
+
+function fillCircle (canvas, { cx, cy, radius, color, samples = 4 }) {
+  const step = 1 / samples;
+  for (let py = Math.floor(cy - radius) - 1; py < cy + radius + 1; py++) {
+    for (let px = Math.floor(cx - radius) - 1; px < cx + radius + 1; px++) {
+      let hits = 0;
+      for (let sy = 0; sy < samples; sy++) {
+        for (let sx = 0; sx < samples; sx++) {
+          if (circleDistance(px + (sx + 0.5) * step, py + (sy + 0.5) * step, cx, cy, radius) <= 0) hits++;
+        }
+      }
+      if (hits > 0) canvas.set(px, py, [...color, Math.round((hits / (samples * samples)) * 255)]);
+    }
+  }
+}
+
 // ---------------------------------------------------------------- artwork
 
 /** The macOS "squircle" approximation used by the app icon. */
 function squircleDistance (x, y, size, inset) {
   const centre = size / 2;
-  const dx = Math.abs(x - centre) - (centre - inset);
-  const dy = Math.abs(y - centre) - (centre - inset);
+  // Clamped before the fractional power: a negative base with a non-integer
+  // exponent is NaN, which reads as outside — and the whole interior with it.
+  const dx = Math.max(Math.abs(x - centre) - (centre - inset), 0);
+  const dy = Math.max(Math.abs(y - centre) - (centre - inset), 0);
   const n = 4.2;
   return (Math.pow(Math.pow(dx, n) + Math.pow(dy, n), 1 / n)) - inset * 0.34;
 }
@@ -140,16 +161,61 @@ function drawAppIcon (size) {
     }
   }
 
-  // The island itself, sitting in the middle like the real Dynamic Island.
+  const inside = (x, y) => squircleDistance(x, y, size, inset) <= 0;
+
+  // The MacBook notch: a tab hanging from the top edge with the camera lens
+  // in it. Pixels outside the squircle are skipped, so the tab grows out of
+  // the icon's own top curve.
+  const notchWidth = size * 0.44;
+  const notchX = (size - notchWidth) / 2;
+  const notchTop = size * 0.02;
+  const notchBottom = size * 0.205;
+  const notchRadius = size * 0.035;
+  for (let py = Math.floor(notchTop) - 1; py < notchBottom + 1; py++) {
+    for (let px = Math.floor(notchX) - 1; px < notchX + notchWidth + 1; px++) {
+      let hits = 0;
+      for (let sy = 0; sy < samples; sy++) {
+        for (let sx = 0; sx < samples; sx++) {
+          const x = px + (sx + 0.5) * step;
+          const y = py + (sy + 0.5) * step;
+          if (!inside(x, y)) continue;
+          const distance = roundedRectDistance(x, y, notchX + notchWidth / 2,
+            (notchTop + notchBottom) / 2, notchWidth / 2, (notchBottom - notchTop) / 2, notchRadius);
+          if (distance <= 0) hits++;
+        }
+      }
+      if (hits > 0) canvas.set(px, py, [16, 17, 22, Math.round((hits / (samples * samples)) * 255)]);
+    }
+  }
+
+  // The lens: dark glass with a glint up-left, so it reads as a camera.
+  const lensX = size / 2;
+  const lensY = size * 0.115;
+  fillCircle(canvas, { cx: lensX, cy: lensY, radius: size * 0.030, color: [26, 28, 36] });
+  fillCircle(canvas, { cx: lensX, cy: lensY, radius: size * 0.019, color: [7, 8, 12] });
+  fillCircle(canvas, { cx: lensX - size * 0.008, cy: lensY - size * 0.008, radius: size * 0.006, color: [150, 190, 255] });
+
+  // The island itself below the notch, edged so it lifts off the background.
   const islandWidth = size * 0.56;
-  const islandHeight = size * 0.34;
+  const islandHeight = size * 0.30;
+  const islandX = (size - islandWidth) / 2;
+  const islandY = size * 0.43;
   fillRoundedRect(canvas, {
-    x: (size - islandWidth) / 2,
-    y: (size - islandHeight) / 2,
+    x: islandX,
+    y: islandY,
     width: islandWidth,
     height: islandHeight,
     radius: islandHeight / 2,
-    color: [8, 8, 10],
+    color: [30, 32, 40],
+  });
+  const edge = size * 0.004;
+  fillRoundedRect(canvas, {
+    x: islandX + edge,
+    y: islandY + edge,
+    width: islandWidth - edge * 2,
+    height: islandHeight - edge * 2,
+    radius: islandHeight / 2 - edge,
+    color: [6, 6, 9],
   });
 
   // Equaliser bars inside the island.
@@ -164,7 +230,7 @@ function drawAppIcon (size) {
     const height = islandHeight * heights[index];
     fillRoundedRect(canvas, {
       x,
-      y: (size - height) / 2,
+      y: islandY + (islandHeight - height) / 2,
       width: barWidth,
       height,
       radius: barWidth / 2,
