@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime entitlements for the signed build. Unsigned local builds
+  never read this file. Nothing here grants device capture: the bridge reads
+  CoreAudio and CoreMediaIO state from its own unsigned process, which needs
+  no entitlement to observe.
+-->
+<plist version="1.0">
+<dict>
+  <!-- V8 compiles JavaScript just in time. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Electron passes flags and crash handling through the environment. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- The updater, its feed and the artwork it shows arrive over HTTPS. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>

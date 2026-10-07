@@ -197,7 +197,7 @@ which part is unavailable.
 ```bash
 npm install
 npm start            # run it
-npm run dev          # run it with renderer logging and a frame counter
+npm run dev          # run it with renderer logging
 npm test             # unit tests for the notch maths and the animation
 npm run selftest     # notch, hotkeys, system bridge and the drag gesture
 npm run dev -- --shot  # write a PNG of every panel to the user data folder
@@ -239,7 +239,8 @@ GITHUB_TOKEN=… npm run dist
 `npm run dist` builds the app, writes `latest-mac.yml` next to the zip, and
 uploads the DMG, the zip and that file to a release tagged with the version in
 `package.json`. Bump the version first; the updater compares it against the one in
-the feed.
+the feed. Pushing a tag (`git tag v1.0.0 && git push origin v1.0.0`) does the
+same through the release workflow, which also runs the tests first.
 
 Two details that Forge does not do on its own, both handled by the
 `update-feed` plugin in `tools/`:
@@ -256,9 +257,16 @@ workflow already knows) or from the `origin` remote. Without either one
 `npm run package` still works, but the build gets no feed and `npm run dist`
 stops with an explanation.
 
-The build is unsigned (`osxSign: false`), so the *first* install from a DMG has
+The build is unsigned by default, so a *first* install from such a DMG has
 to be opened with right-click → Open, or Gatekeeper will refuse it. Updates
 installed by the updater itself are not quarantined and do not have that problem.
+
+A release build signs and notarizes instead, and then the DMG opens without
+the warning. It needs a Developer ID certificate plus notarization credentials,
+all read from the environment so none of it lands in the repository (see the
+top of `forge.config.js` for the exact variables). The release workflow takes
+the same values as repository secrets and runs the whole chain — tests, signed
+and notarized build, published GitHub release — on every version tag.
 
 ## Notes and limits
 

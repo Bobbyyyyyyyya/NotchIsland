@@ -4,6 +4,38 @@ const { repository } = require('./tools/update-feed');
 const feed = repository();
 
 /**
+ * Signing and notarization are what keep Gatekeeper quiet about the DMG.
+ * Everything secret comes from the environment so none of it can end up in
+ * the repository: a local build without them stays unsigned, exactly like now.
+ *
+ *   APPLE_IDENTITY                'Developer ID Application: … (TEAMID)'
+ *   APPLE_ID                      the Apple ID that notarizes
+ *   APPLE_APP_SPECIFIC_PASSWORD   an app-specific password for it
+ *   APPLE_TEAM_ID                 the Developer ID team
+ *
+ * …or, for CI, an App Store Connect API key instead of the password triple:
+ *
+ *   APPLE_API_KEY                 path to the .p8 file
+ *   APPLE_API_KEY_ID              the key id
+ *   APPLE_API_ISSUER              the issuer id
+ */
+const identity = process.env.APPLE_IDENTITY || null;
+const notarizePassword = process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID
+  ? {
+      appleId: process.env.APPLE_ID,
+      appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+      teamId: process.env.APPLE_TEAM_ID,
+    }
+  : null;
+const notarizeKey = process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID && process.env.APPLE_API_ISSUER
+  ? {
+      appleApiKey: process.env.APPLE_API_KEY,
+      appleApiKeyId: process.env.APPLE_API_KEY_ID,
+      appleApiIssuer: process.env.APPLE_API_ISSUER,
+    }
+  : null;
+
+/**
  * @type {import('@electron-forge/cli').ForgeConfig}
  */
 module.exports = {
@@ -14,7 +46,12 @@ module.exports = {
     appCategoryType: 'public.app-category.utilities',
     icon: path.join(__dirname, 'assets', 'icon'),
     // The helper is compiled on first run, so its source travels with the app.
-    extraResource: [path.join(__dirname, 'tools', 'helper')],
+    // The media adapter travels too: without it a packaged build has no
+    // transport controls at all.
+    extraResource: [
+      path.join(__dirname, 'tools', 'helper'),
+      path.join(__dirname, 'tools', 'mediaremote'),
+    ],
     extendInfo: {
       NSAppleEventsUsageDescription:
         'Notch Island needs Apple Events permission to control your music player.',
@@ -22,7 +59,15 @@ module.exports = {
         'Notch Island needs microphone access to show and toggle microphone input.',
       LSUIElement: true,
     },
-    osxSign: false,
+    osxSign: identity
+      ? {
+          identity,
+          hardenedRuntime: true,
+          entitlements: path.join(__dirname, 'entitlements.plist'),
+          'entitlements-inherit': path.join(__dirname, 'entitlements.plist'),
+        }
+      : false,
+    osxNotarize: notarizeKey ?? notarizePassword ?? undefined,
   },
   rebuildConfig: {},
   makers: [

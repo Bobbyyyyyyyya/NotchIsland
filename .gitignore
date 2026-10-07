@@ -4,3 +4,10 @@ dist/
 .DS_Store
 *.log
 assets/*.iconset/
+# Signing material and local environment never belong in the repository: the
+# release reads them from the environment instead.
+.env
+*.p12
+*.pfx
+*.p8
+*.mobileprovision

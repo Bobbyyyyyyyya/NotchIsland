@@ -1,0 +1,53 @@
+# Builds, signs, notarizes and publishes a release on every version tag.
+#
+# Required repository secrets (Settings → Secrets → Actions):
+#
+#   APPLE_CERTIFICATE_P12          the Developer ID certificate, base64-encoded
+#   APPLE_CERTIFICATE_PASSWORD     its import password
+#   APPLE_IDENTITY                 'Developer ID Application: … (TEAMID)'
+#   APPLE_ID                       the Apple ID that notarizes
+#   APPLE_APP_SPECIFIC_PASSWORD    an app-specific password for it
+#   APPLE_TEAM_ID                  the Developer ID team
+#
+# Tag and push:  git tag v1.0.0 && git push origin v1.0.0
+# The version in package.json is what the tag, the DMG and the update feed
+# all agree on, so bump it first.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > /tmp/signing.p12
+          security create-keychain -p actions build.keychain
+          security import /tmp/signing.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          rm /tmp/signing.p12
+      - name: Make and publish
+        run: npm run dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
