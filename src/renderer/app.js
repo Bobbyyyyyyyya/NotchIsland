@@ -2717,6 +2717,10 @@ api.on('media:tick', ({ elapsed, playing }) => {
 
 api.on('toast', ({ message }) => toast(message));
 
+api.on('mods:changed', () => {
+  reloadMods();
+});
+
 api.on('system:tick', ({ cpu }) => {
   const media = view.snapshot?.media;
   if (media) view.snapshot.system.cpu = cpu;
@@ -2844,6 +2848,25 @@ async function loadMods () {
       console.error(`[mods] ${file.name} did not load:`, error.message);
     }
   }
+}
+
+/**
+ * Loads the mods folder again after it changed underneath the app: an
+ * external program drops a widget or a panel in, and the island picks it up
+ * without restarting. Everything registered is forgotten first and imported
+ * fresh — a new blob URL runs a new module instance, so no stale closure
+ * survives — and the row is drawn again from a fresh snapshot, which carries
+ * the new palette entries back. A panel open on a mod that just left folds
+ * away instead of showing its absence.
+ */
+async function reloadMods () {
+  modWidgets.clear();
+  modPanels.clear();
+  modList.length = 0;
+  await loadMods();
+  render(await api.getState());
+  const [head, tail] = String(view.state).split(':');
+  if (head === 'mod' && !modPanels.has(tail)) openPanel('close');
 }
 
 // Expose a tiny surface for debugging from the devtools console.

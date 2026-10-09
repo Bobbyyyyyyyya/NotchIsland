@@ -150,6 +150,18 @@ async function bootstrap () {
   applyPreferences();
   startPolling();
   mods.ensure();
+  // An external app adds a widget or a panel by dropping a file in the mods
+  // folder. The island picks it up — and drops what was deleted — without
+  // restarting; big files should be written temp-and-renamed so a half-written
+  // read is never the one that loads.
+  try {
+    fs.watch(mods.dir(), () => {
+      clearTimeout(modsTimer);
+      modsTimer = setTimeout(() => island.send('mods:changed', {}), 400);
+    });
+  } catch (error) {
+    console.warn('[mods] could not watch the mods folder:', error.message);
+  }
   updater.start();
 
   if (process.argv.includes('--shot')) await captureReference();
@@ -743,6 +755,8 @@ function handleHotkey (action) {
 /** How long an activity keeps the island open before it folds away again. */
 const ACTIVITY_LINGER_MS = 4500;
 let activityTimer = null;
+/** Debounces the mods-folder watcher: editors save twice for one edit. */
+let modsTimer = null;
 
 /**
  * Set while `--shot` is staging its scenes: the helper keeps publishing the real

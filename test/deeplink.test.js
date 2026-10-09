@@ -21,6 +21,10 @@ test('a panel link opens that panel', () => {
   assert.deepStrictEqual(deeplink.parseDeepLink('notch-island://open/close'), {
     name: 'panel.open', args: { state: 'compact' },
   });
+  assert.deepStrictEqual(deeplink.parseDeepLink('notch-island://open/mod:example'), {
+    name: 'panel.open', args: { state: 'mod:example' },
+  }, 'a mod panel opens by its id');
+  assert.strictEqual(deeplink.parseDeepLink('notch-island://open/mod:'), null, 'but not an empty one');
 });
 
 test('a toast carries one line', () => {

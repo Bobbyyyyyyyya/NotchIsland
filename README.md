@@ -282,10 +282,43 @@ open 'notch-island://timer?minutes=25'     # start a countdown
 ```
 
 Panels are `quick`, `player`, `volume`, `mic`, `bluetooth`, `battery`,
-`clipboard`, `clock`, `settings`, `layout` and `compact` (`close` folds).
-Anything else — another scheme, an unknown panel, a number outside its range —
-is ignored. Anything deeper than a link belongs in a mod: a `.js` file in the
-mods folder draws widgets and panels inside the island itself.
+`clipboard`, `clock`, `settings`, `layout` and `compact` (`close` folds), plus
+`mod:<id>` for a mod's own panel. Anything else — another scheme, an unknown
+panel, a number outside its range — is ignored.
+
+Anything deeper than a link belongs in a mod. A mod is a `.js` file in
+`~/Library/Application Support/Notch Island/mods/` — which is exactly how an
+external app ships a widget or a panel: write the file and the island picks it
+up without restarting (deleted files unload the same way; write big ones
+temp-and-renamed). A fresh install finds `example.js` there to copy from:
+
+```js
+islandMod.register({
+  id: 'myapp',
+  name: 'My App',
+  widgets: [{
+    id: 'myapp', label: 'My App',
+    render: (state) => {
+      const node = document.createElement('button');
+      node.className = 'widget readout';
+      node.dataset.panelOpen = 'mod:myapp'; // click opens the panel below
+      node.textContent = 'Hi';
+      return node; // or null to leave the slot empty
+    },
+  }],
+  panels: [{
+    id: 'myapp', label: 'My App',
+    render: (state, el) => { el.textContent = 'Hello.'; },
+  }],
+});
+```
+
+A mod runs in the island's page: no Node, no files, no network. It reads the
+state it is handed (`islandMod.state()`), draws with it, and fires the actions
+the island already has (`islandMod.action(name, args)`). Widgets wait in the
+palette until arranged like any other widget; panels open from
+`notch-island://open/mod:myapp` too. It runs as you, so only files you — or an
+app you trust with your folder — put there ever run.
 
 ## Notes and limits
 

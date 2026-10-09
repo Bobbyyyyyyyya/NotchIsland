@@ -36,6 +36,9 @@ const TIMER_DEFAULT = 5;
 function panelTarget (name) {
   const panel = String(name ?? '').replace(/^\/+/, '');
   if (panel === 'close') return 'compact';
+  // A mod's panel opens by its id; an unknown one lands on a panel that says
+  // its mod is not loaded, which is the graceful answer to a stale link.
+  if (panel.startsWith('mod:')) return panel.length > 4 ? panel : null;
   return PANELS.has(panel) ? panel : null;
 }
 

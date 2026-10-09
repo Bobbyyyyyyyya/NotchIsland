@@ -2,7 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-const INBOUND = ['island:frame', 'state:update', 'media:tick', 'system:tick', 'helper:event', 'toast'];
+const INBOUND = ['island:frame', 'state:update', 'media:tick', 'system:tick', 'helper:event', 'toast', 'mods:changed'];
 
 /**
  * The renderer is a plain web page: it can read a state snapshot, fire named
