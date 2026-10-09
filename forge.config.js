@@ -59,6 +59,9 @@ module.exports = {
         'Notch Island needs microphone access to show and toggle microphone input.',
       LSUIElement: true,
     },
+    // Registers notch-island:// in the packaged app, so other programs can
+    // open panels, toast a line and start timers with a URL.
+    protocols: [{ name: 'Notch Island URL', schemes: ['notch-island'] }],
     osxSign: identity
       ? {
           identity,

@@ -256,7 +256,6 @@ The repository comes from `GITHUB_REPOSITORY` (`owner/repo`, which a release
 workflow already knows) or from the `origin` remote. Without either one
 `npm run package` still works, but the build gets no feed and `npm run dist`
 stops with an explanation.
-
 The build is unsigned by default, so a *first* install from such a DMG has
 to be opened with right-click → Open, or Gatekeeper will refuse it.
 Alternatively, `xattr -cr /Applications/Notch\ Island.app` clears the download
@@ -269,6 +268,24 @@ all read from the environment so none of it lands in the repository (see the
 top of `forge.config.js` for the exact variables). The release workflow takes
 the same values as repository secrets and runs the whole chain — tests, signed
 and notarized build, published GitHub release — on every version tag.
+
+## For other apps
+
+Anything that can open a URL can drive the island — a script, a shortcut, a
+browser — with no dependency. Three links, each answered the way a click would
+be (a locked island stays shut for links too):
+
+```bash
+open 'notch-island://open/player'          # open the island on a panel
+open 'notch-island://toast?message=Backup%20done'
+open 'notch-island://timer?minutes=25'     # start a countdown
+```
+
+Panels are `quick`, `player`, `volume`, `mic`, `bluetooth`, `battery`,
+`clipboard`, `clock`, `settings`, `layout` and `compact` (`close` folds).
+Anything else — another scheme, an unknown panel, a number outside its range —
+is ignored. Anything deeper than a link belongs in a mod: a `.js` file in the
+mods folder draws widgets and panels inside the island itself.
 
 ## Notes and limits
 

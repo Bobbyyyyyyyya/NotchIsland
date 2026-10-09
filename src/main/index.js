@@ -8,6 +8,7 @@ const path = require('node:path');
 const activities = require('./activities');
 const layout = require('./layout');
 const prefs = require('./prefs');
+const deeplink = require('./deeplink');
 const { TrackCover } = require('./artwork');
 const { HelperBridge } = require('./helper');
 const { Hotkeys } = require('./hotkeys');
@@ -80,12 +81,40 @@ let cpuTimer = null;
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => island.window?.show());
+  app.on('second-instance', (_event, argv) => {
+    island.window?.show();
+    for (const arg of argv ?? []) handleDeepLink(arg);
+  });
+  // A link opened while running lands here; a link opened cold arrives in the
+  // argv of the instance macOS first wakes, which the branch above covers.
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+  });
   app.whenReady().then(bootstrap);
+}
+
+/** A URL from outside becomes an action call, or is ignored with one word. */
+function handleDeepLink (raw) {
+  if (typeof raw !== 'string') return;
+  const hit = deeplink.parseDeepLink(raw);
+  if (hit) {
+    run(hit.name, hit.args);
+    return;
+  }
+  if (raw.toLowerCase().startsWith(deeplink.SCHEME)) console.warn('[deeplink] ignored', raw.slice(0, 120));
 }
 
 async function bootstrap () {
   app.dock?.hide();
+
+  // Claim notch-island:// so scripts and other apps can knock. The packaged
+  // build declares the scheme in its Info.plist too; this covers development.
+  try {
+    if (!app.isDefaultProtocolClient('notch-island')) app.setAsDefaultProtocolClient('notch-island');
+  } catch (error) {
+    console.warn('[deeplink] could not claim the URL scheme:', error.message);
+  }
 
   island.create();
   await island.syncDisplays();
@@ -887,6 +916,9 @@ const actions = {
   // fold-away chevron both funnel through here.
   'close': () => run('panel.open', { state: 'compact' }),
   'island.toggle': () => toggleIsland(),
+  // One line in the island's own voice. The deep link validates first; this
+  // caps again so no caller can stretch it.
+  'toast': ({ message }) => island.send('toast', { message: String(message ?? '').slice(0, 140) }),
   // A held press toggles the lock: locked means compact, whatever asks, until
   // it is toggled back. Locking folds whatever is open; unlocking opens nothing.
   'island.lock': () => {
