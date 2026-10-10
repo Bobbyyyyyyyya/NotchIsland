@@ -38,6 +38,7 @@ const view = {
   locked: false,
   foldedAt: 0,
   clockFace: 'digital',
+  clockTheme: 'dark',
   connectedBluetooth: null,
   bluetoothHello: null,
   sections: {},
@@ -1417,16 +1418,19 @@ function buildDial (svg) {
   }
 }
 
-/** Shows the picked face and marks its button; anything else is not a face. */
+/** Shows the picked face and theme, and marks their buttons. */
 function syncClockFace () {
-  const face = view.snapshot?.prefs?.island?.clockFace;
-  view.clockFace = face === 'analog' || face === 'both' ? face : 'digital';
+  const prefs = view.snapshot?.prefs?.island ?? {};
+  view.clockFace = prefs.clockFace === 'analog' || prefs.clockFace === 'both' ? prefs.clockFace : 'digital';
   for (const panel of root.querySelectorAll('.clock-face')) {
     panel.hidden = panel.dataset.face !== view.clockFace;
   }
   for (const button of root.querySelectorAll('#faceSwitch [data-face]')) {
     button.classList.toggle('on', button.dataset.face === view.clockFace);
   }
+  view.clockTheme = prefs.clockTheme === 'light' ? 'light' : 'dark';
+  root.classList.toggle('clock-light', view.clockTheme === 'light');
+  el('clockTheme')?.classList.toggle('on', view.clockTheme === 'light');
 }
 
 function startClock () {
@@ -2158,6 +2162,12 @@ for (const button of root.querySelectorAll('#faceSwitch [data-face]')) {
     api.action('prefs.set', { patch: { island: { clockFace: button.dataset.face } } });
   });
 }
+const themeButton = el('clockTheme');
+if (themeButton && !themeButton.childElementCount) themeButton.innerHTML = icon('contrast', { size: 13 });
+themeButton?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  api.action('prefs.set', { patch: { island: { clockTheme: view.clockTheme === 'light' ? 'dark' : 'light' } } });
+});
 bindArrangeDrag();
 el('updateCheck').addEventListener('click', () => api.action('update.check', {}));
 el('themeReset')?.addEventListener('click', () => api.action('prefs.set', {

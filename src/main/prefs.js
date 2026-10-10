@@ -24,6 +24,8 @@ const DEFAULTS = {
     locked: false,
     // Which face the clock panel wears: digital, analog, or both at once.
     clockFace: 'digital',
+    // And in which light: dark is the island's own black, light is a white card.
+    clockTheme: 'dark',
     hideOnFullscreen: false,
     hideMenuBar: true,
     clickPassThrough: true,

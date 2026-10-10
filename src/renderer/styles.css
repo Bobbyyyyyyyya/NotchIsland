@@ -1280,6 +1280,22 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .dial-pin { fill: var(--orange); }
 .clock-time.small #comboTime { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; color: #fff; }
 
+/*
+ * The clock in white: each face becomes a light card on the black island, so
+ * "black or white" is one tap in the clock header. The header itself stays
+ * dark, and so does everything outside the faces.
+ */
+#island.clock-light .clock-face { background: #f4f4f6; border-radius: 16px; padding: 14px 10px 16px; }
+#island.clock-light .clock-time #clockTime,
+#island.clock-light .clock-time.small #comboTime { color: #111; }
+#island.clock-light .clock-seconds,
+#island.clock-light .clock-date { color: #6e6e73; }
+#island.clock-light .dial-ring { fill: rgba(0, 0, 0, 0.04); stroke: rgba(0, 0, 0, 0.15); }
+#island.clock-light .dial-ticks line { stroke: rgba(0, 0, 0, 0.3); }
+#island.clock-light .dial-ticks line.major { stroke: rgba(0, 0, 0, 0.85); }
+#island.clock-light .hand.hour,
+#island.clock-light .hand.minute { stroke: #111; }
+
 .status-banner {
   display: none;
   align-items: center;

@@ -423,10 +423,18 @@ test('syncing the face shows only the picked one', () => {
       view.snapshot = { prefs: { island: { clockFace: 'nonsense' } } };
       api.syncClockFace();
       assert.deepStrictEqual(faces.map((node) => node.hidden), [false, true, true], 'garbage falls back to digital');
+      view.snapshot = { prefs: { island: { clockFace: 'digital', clockTheme: 'light' } } };
+      api.syncClockFace();
+      assert.ok(root.classList.contains('clock-light'), 'light theme marks the island');
+      assert.strictEqual(view.clockTheme, 'light');
+      view.snapshot = { prefs: { island: {} } };
+      api.syncClockFace();
+      assert.ok(!root.classList.contains('clock-light'), 'and unset means dark');
     } finally {
       view.snapshot = prev;
     }
   } finally {
     for (const node of faces) node.remove();
+    root.classList.remove('clock-light');
   }
 });

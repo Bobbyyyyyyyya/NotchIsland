@@ -26,6 +26,7 @@ const solid = {
   chevron: '<path d="m9 6 6 6-6 6"/>',
   close: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',
   lock: '<rect x="5.5" y="10.5" width="13" height="9.5" rx="2.4"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7"/>',
+  contrast: '<circle cx="12" cy="12" r="8.4"/><path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="currentColor" stroke="none"/>',
   check: '<path d="m5 12.6 4.6 4.4L19 6.6"/>',
   // Closed shape, so it fills cleanly when it is used as the "done" flash.
   checkFill: '<path d="M20.4 6.5a1.4 1.4 0 0 1 0 2L10.4 18.5a1.4 1.4 0 0 1-2 0l-4.8-4.8a1.4 1.4 0 0 1 2-2l3.8 3.8 8.8-8.8a1.4 1.4 0 0 1 2 0Z"/>',
@@ -59,8 +60,7 @@ const stroke = {
   mic: '<rect x="9.2" y="3" width="5.6" height="10.5" rx="2.8"/><path d="M6 11.2a6 6 0 0 0 12 0M12 17.2v3.8"/>',
   micOff: '<rect x="9.2" y="3" width="5.6" height="10.5" rx="2.8"/><path d="M6 11.2a6 6 0 0 0 9 5.2M18 11.2a6 6 0 0 1-.6 2.6M12 17.2v3.8"/><path d="m4 3.2 16 17.6"/>',
   chevron: '<path d="m9.5 5.5 6.5 6.5-6.5 6.5"/>',
-  close: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',
-  // AirDrop: a circle of concentric arcs with a device in the middle. Deliberately
+  close: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',  // AirDrop: a circle of concentric arcs with a device in the middle. Deliberately
   // not the wifi glyph — the arcs sit *inside* the ring and open downward.
   airdrop: '<circle cx="12" cy="13.5" r="8.8"/><path d="M6.8 13.5a5.2 5.2 0 0 1 10.4 0"/><path d="M9.4 13.5a2.6 2.6 0 0 1 5.2 0"/><rect x="10.9" y="12.4" width="2.2" height="2.2" rx="0.3"/>',
   link: '<path d="M10.4 13.6a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M13.6 10.4a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/>',
