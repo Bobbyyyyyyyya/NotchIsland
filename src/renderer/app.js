@@ -334,7 +334,7 @@ const WIDGETS = {
       if (charging) {
         const bolt = document.createElement('span');
         bolt.className = 'charging';
-        bolt.innerHTML = icon('batteryBolt', { size: 11, filled: true });
+        bolt.innerHTML = icon('batteryBolt', { size: 15, filled: true });
         node.append(bolt);
         node.classList.add('is-charging');
       }
