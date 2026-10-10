@@ -1388,7 +1388,7 @@ function renderClock (now = new Date()) {
 /** Points a dial's hands at the time. A missing dial is not an error. */
 function paintHands (prefix, now) {
   const { hour, minute, second } = clockHands(now);
-  for (const [suffix, degrees] of [['Hour', hour], ['Minute', minute], ['Second', second]]) {
+  for (const [suffix, degrees] of [['Hour', hour], ['Min', minute], ['Sec', second]]) {
     const hand = el(`${prefix}${suffix}`);
     if (hand) hand.setAttribute('transform', `rotate(${degrees} 60 60)`);
   }

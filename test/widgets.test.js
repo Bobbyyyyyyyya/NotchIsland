@@ -198,12 +198,14 @@ const code = [
   grab('syncPicker'),
   grab('pickSwatch'),
   grab('clockHands'),
+  grab('paintHands'),
+  grab('syncClockFace'),
   grab('renderPrivacy'),
   app.slice(wFrom, wEnd),
   grab('renderWidgets'),
 ].join('\n\n');
 
-const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch, clockHands };`)(...Object.values(sandbox));
+const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch, clockHands, paintHands, syncClockFace };`)(...Object.values(sandbox));
 
 const base = {
   media: { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', artwork: null, duration: 246, elapsed: 74, rate: 1, playbackState: 1 },
@@ -394,4 +396,37 @@ test('clock hands turn from the time', () => {
   assert.ok(Math.abs(hands.hour - 97.75) < 1e-9, `hour ${hands.hour}`);
   assert.ok(Math.abs(hands.minute - 93) < 1e-9, `minute ${hands.minute}`);
   assert.strictEqual(hands.second, 180);
+});
+
+test('painting hands turns the dial', () => {
+  api.paintHands('analog', new Date(2026, 9, 10, 3, 15, 30));
+  assert.strictEqual(byId.get('analogHour').attributes.transform, 'rotate(97.75 60 60)');
+  assert.strictEqual(byId.get('analogMin').attributes.transform, 'rotate(93 60 60)');
+  assert.strictEqual(byId.get('analogSec').attributes.transform, 'rotate(180 60 60)');
+});
+
+test('syncing the face shows only the picked one', () => {
+  const faces = ['digital', 'analog', 'both'].map((face) => {
+    const node = new Node('div');
+    node.className = 'clock-face';
+    node.dataset.face = face;
+    root.append(node);
+    return node;
+  });
+  try {
+    const prev = view.snapshot;
+    try {
+      view.snapshot = { prefs: { island: { clockFace: 'analog' } } };
+      api.syncClockFace();
+      assert.deepStrictEqual(faces.map((node) => node.hidden), [true, false, true]);
+      assert.strictEqual(view.clockFace, 'analog');
+      view.snapshot = { prefs: { island: { clockFace: 'nonsense' } } };
+      api.syncClockFace();
+      assert.deepStrictEqual(faces.map((node) => node.hidden), [false, true, true], 'garbage falls back to digital');
+    } finally {
+      view.snapshot = prev;
+    }
+  } finally {
+    for (const node of faces) node.remove();
+  }
 });
