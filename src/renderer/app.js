@@ -280,7 +280,7 @@ const WIDGETS = {
       tintCharge(node, level);
       const bolt = document.createElement('span');
       bolt.className = 'charging';
-      bolt.innerHTML = icon(level >= 1 ? 'checkFill' : 'batteryBolt', { size: 11, filled: true });
+      bolt.innerHTML = icon(level >= 1 ? 'checkFill' : 'batteryBolt', { size: 15, filled: true });
       node.append(bolt);
       const label = document.createElement('span');
       label.className = 'label';
