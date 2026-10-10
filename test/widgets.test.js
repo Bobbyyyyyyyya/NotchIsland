@@ -197,12 +197,13 @@ const code = [
   grab('applyTint'),
   grab('syncPicker'),
   grab('pickSwatch'),
+  grab('clockHands'),
   grab('renderPrivacy'),
   app.slice(wFrom, wEnd),
   grab('renderWidgets'),
 ].join('\n\n');
 
-const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch };`)(...Object.values(sandbox));
+const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch, clockHands };`)(...Object.values(sandbox));
 
 const base = {
   media: { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', artwork: null, duration: 246, elapsed: 74, rate: 1, playbackState: 1 },
@@ -384,4 +385,13 @@ test('a swatch click becomes the prefs patch its strip stands for', () => {
     { island: { accent: null } },
     { island: { pill: '#000000' } },
   ]);
+});
+
+test('clock hands turn from the time', () => {
+  // 3:15:30: the hour hand a quarter past three, the minute hand on three,
+  // the second hand straight down.
+  const hands = api.clockHands(new Date(2026, 9, 10, 3, 15, 30));
+  assert.ok(Math.abs(hands.hour - 97.75) < 1e-9, `hour ${hands.hour}`);
+  assert.ok(Math.abs(hands.minute - 93) < 1e-9, `minute ${hands.minute}`);
+  assert.strictEqual(hands.second, 180);
 });

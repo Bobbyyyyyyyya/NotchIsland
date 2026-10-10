@@ -22,6 +22,8 @@ const DEFAULTS = {
     tints: {},
     // Locked means compact, whatever asks: long-press the island to toggle it.
     locked: false,
+    // Which face the clock panel wears: digital, analog, or both at once.
+    clockFace: 'digital',
     hideOnFullscreen: false,
     hideMenuBar: true,
     clickPassThrough: true,

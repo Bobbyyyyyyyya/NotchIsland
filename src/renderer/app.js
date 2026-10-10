@@ -37,6 +37,7 @@ const view = {
   ax: 0,
   locked: false,
   foldedAt: 0,
+  clockFace: 'digital',
   connectedBluetooth: null,
   bluetoothHello: null,
   sections: {},
@@ -848,6 +849,7 @@ function render (snapshot) {
   renderSettings(snapshot);
   renderArranging();
   syncPanels();
+  syncClockFace();
   requestSize();
 }
 
@@ -1358,15 +1360,73 @@ const CLOCK_DATE = new Intl.DateTimeFormat('en-GB', {
 });
 let clockTimer = null;
 
-function renderClock () {
-  const now = new Date();
+/** Hand angles for a time, in degrees clockwise from twelve. */
+function clockHands (date) {
+  const seconds = date.getSeconds() + date.getMilliseconds() / 1000;
+  const minutes = date.getMinutes() + seconds / 60;
+  const hours = (date.getHours() % 12) + minutes / 60;
+  return { hour: hours * 30, minute: minutes * 6, second: seconds * 6 };
+}
+
+function renderClock (now = new Date()) {
   const time = el('clockTime');
+  if (time) time.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const seconds = el('clockSeconds');
+  if (seconds) seconds.textContent = String(now.getSeconds()).padStart(2, '0');
   const date = el('clockDate');
-  if (!time || !seconds || !date) return;
-  time.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  seconds.textContent = String(now.getSeconds()).padStart(2, '0');
-  date.textContent = CLOCK_DATE.format(now);
+  if (date) date.textContent = CLOCK_DATE.format(now);
+  const combo = el('comboTime');
+  if (combo) combo.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const comboSeconds = el('comboSeconds');
+  if (comboSeconds) comboSeconds.textContent = String(now.getSeconds()).padStart(2, '0');
+  const comboDate = el('comboDate');
+  if (comboDate) comboDate.textContent = CLOCK_DATE.format(now);
+  paintHands('analog', now);
+  paintHands('combo', now);
+}
+
+/** Points a dial's hands at the time. A missing dial is not an error. */
+function paintHands (prefix, now) {
+  const { hour, minute, second } = clockHands(now);
+  for (const [suffix, degrees] of [['Hour', hour], ['Minute', minute], ['Second', second]]) {
+    const hand = el(`${prefix}${suffix}`);
+    if (hand) hand.setAttribute('transform', `rotate(${degrees} 60 60)`);
+  }
+}
+
+/**
+ * Draws a dial's sixty ticks once: long bright ones on the hours, short faint
+ * ones between. The hands already wait in the markup with their ids on.
+ */
+function buildDial (svg) {
+  if (!svg) return;
+  const ticks = svg.querySelector('.dial-ticks');
+  if (!ticks || ticks.childElementCount) return;
+  const namespace = 'http://www.w3.org/2000/svg';
+  for (let index = 0; index < 60; index++) {
+    const major = index % 5 === 0;
+    const angle = (index / 60) * Math.PI * 2;
+    const inner = major ? 46 : 50;
+    const line = document.createElementNS(namespace, 'line');
+    line.setAttribute('x1', 60 + inner * Math.sin(angle));
+    line.setAttribute('y1', 60 - inner * Math.cos(angle));
+    line.setAttribute('x2', 60 + 54 * Math.sin(angle));
+    line.setAttribute('y2', 60 - 54 * Math.cos(angle));
+    if (major) line.setAttribute('class', 'major');
+    ticks.append(line);
+  }
+}
+
+/** Shows the picked face and marks its button; anything else is not a face. */
+function syncClockFace () {
+  const face = view.snapshot?.prefs?.island?.clockFace;
+  view.clockFace = face === 'analog' || face === 'both' ? face : 'digital';
+  for (const panel of root.querySelectorAll('.clock-face')) {
+    panel.hidden = panel.dataset.face !== view.clockFace;
+  }
+  for (const button of root.querySelectorAll('#faceSwitch [data-face]')) {
+    button.classList.toggle('on', button.dataset.face === view.clockFace);
+  }
 }
 
 function startClock () {
@@ -2090,6 +2150,14 @@ document.addEventListener('change', (event) => {
 });
 
 el('retryHelper').addEventListener('click', () => api.action('helper.retry', {}));
+buildDial(el('analogDial'));
+buildDial(el('comboDial'));
+for (const button of root.querySelectorAll('#faceSwitch [data-face]')) {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    api.action('prefs.set', { patch: { island: { clockFace: button.dataset.face } } });
+  });
+}
 bindArrangeDrag();
 el('updateCheck').addEventListener('click', () => api.action('update.check', {}));
 el('themeReset')?.addEventListener('click', () => api.action('prefs.set', {

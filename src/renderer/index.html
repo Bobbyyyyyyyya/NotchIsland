@@ -175,15 +175,42 @@
         <div class="clipboard-list" id="clipboardList"></div>
       </section>
 
-      <!-- the clock the row's time widget opens: the time, big, with seconds -->
+      <!-- the clock the row's time widget opens: digital, analog, or both -->
       <section class="panel" data-panel="clock">
         <div class="panel-head">
           <h2>Clock</h2>
+          <div class="face-switch" id="faceSwitch">
+            <button data-face="digital">Digital</button>
+            <button data-face="analog">Analog</button>
+            <button data-face="both">Both</button>
+          </div>
           <button class="icon-button" data-action="close"></button>
         </div>
-        <div class="clock-face">
+        <div class="clock-face" data-face="digital">
           <div class="clock-time"><span id="clockTime">--:--</span><span class="clock-seconds" id="clockSeconds">--</span></div>
           <div class="clock-date" id="clockDate"></div>
+        </div>
+        <div class="clock-face" data-face="analog" hidden>
+          <svg class="dial" id="analogDial" viewBox="0 0 120 120">
+            <circle class="dial-ring" cx="60" cy="60" r="56" />
+            <g class="dial-ticks"></g>
+            <line id="analogHour" class="hand hour" x1="60" y1="60" x2="60" y2="34" />
+            <line id="analogMin" class="hand minute" x1="60" y1="60" x2="60" y2="22" />
+            <line id="analogSec" class="hand second" x1="60" y1="68" x2="60" y2="18" />
+            <circle class="dial-pin" cx="60" cy="60" r="3" />
+          </svg>
+        </div>
+        <div class="clock-face" data-face="both" hidden>
+          <svg class="dial" id="comboDial" viewBox="0 0 120 120">
+            <circle class="dial-ring" cx="60" cy="60" r="56" />
+            <g class="dial-ticks"></g>
+            <line id="comboHour" class="hand hour" x1="60" y1="60" x2="60" y2="34" />
+            <line id="comboMin" class="hand minute" x1="60" y1="60" x2="60" y2="22" />
+            <line id="comboSec" class="hand second" x1="60" y1="68" x2="60" y2="18" />
+            <circle class="dial-pin" cx="60" cy="60" r="3" />
+          </svg>
+          <div class="clock-time small"><span id="comboTime">--:--</span><span class="clock-seconds" id="comboSeconds">--</span></div>
+          <div class="clock-date" id="comboDate"></div>
         </div>
       </section>
 

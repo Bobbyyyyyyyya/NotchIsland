@@ -1257,6 +1257,29 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .clock-seconds::before { content: ":"; }
 .clock-date { font-size: 12.5px; color: var(--muted); }
 
+/* The face switch: a segmented control in the clock header. */
+.face-switch { display: flex; background: rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 2px; gap: 2px; }
+.face-switch button { font-size: 11px; color: var(--muted); padding: 3px 10px; border-radius: 6px; background: none; border: 0; cursor: pointer; }
+.face-switch button.on { background: rgba(255, 255, 255, 0.85); color: #111; font-weight: 600; }
+
+/* Only the picked face shows; the hidden attribute loses to display:flex
+   without the help. */
+.clock-face[hidden] { display: none; }
+
+/* The analog dial: ticks, three hands and a pin, all drawn to the scale the
+   hands rotate in. */
+.dial { width: 168px; height: 168px; }
+.clock-face[data-face="both"] .dial { width: 148px; height: 148px; }
+.dial-ring { fill: rgba(255, 255, 255, 0.05); stroke: rgba(255, 255, 255, 0.18); stroke-width: 1; }
+.dial-ticks line { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+.dial-ticks line.major { stroke: rgba(255, 255, 255, 0.9); stroke-width: 2; }
+.hand { stroke-linecap: round; }
+.hand.hour { stroke: #fff; stroke-width: 5; }
+.hand.minute { stroke: #fff; stroke-width: 3.5; }
+.hand.second { stroke: var(--orange); stroke-width: 1.5; }
+.dial-pin { fill: var(--orange); }
+.clock-time.small #comboTime { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; color: #fff; }
+
 .status-banner {
   display: none;
   align-items: center;
