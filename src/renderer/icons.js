@@ -18,7 +18,7 @@ const solid = {
   mic: '<path d="M12 3.5a2.6 2.6 0 0 1 2.6 2.6v5a2.6 2.6 0 0 1-5.2 0v-5A2.6 2.6 0 0 1 12 3.5Z"/><path d="M6.5 11.2a5.5 5.5 0 0 0 11 0M12 16.7v3.8"/>',
   micOff: '<path d="M9.5 6.1A2.6 2.6 0 0 1 14.6 6v5c0 .6-.2 1.2-.5 1.6M14.6 15.1a2.6 2.6 0 0 1-5.2-1v-4"/><path d="M6.5 11.2a5.5 5.5 0 0 0 8.4 4.7M17.5 11.2v.6M12 16.7v3.8"/><path d="m4 3 16 18" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round"/>',
   battery: '<rect x="2.5" y="7.5" width="16" height="9" rx="2.6"/><path d="M21 10.5v3"/>',
-  batteryBolt: '<path d="M13.4 8.2 9.8 13h2.6l-1 3.6 3.6-4.8h-2.6l.9-3.6Z" fill="currentColor" stroke="none"/>',
+  batteryBolt: '<path d="M13.5 1.5 4.5 13.5h6l-1.5 9 9-12h-6l1.5-9Z" fill="currentColor" stroke="none"/>',
   clipboard: '<rect x="6.5" y="4.5" width="11" height="16" rx="2.4"/><path d="M9.8 4.5a2.2 2.2 0 0 1 4.4 0"/><path d="M9.6 11.5h4.8M9.6 15h3.2"/>',
   clock: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/>',
   music: '<path d="M9.5 17.4V6.6l9-1.8v10.8"/><circle cx="7" cy="17.6" r="2.6"/><circle cx="16" cy="15.8" r="2.6"/>',
