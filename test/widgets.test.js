@@ -186,6 +186,8 @@ const code = [
   'const modWidgets = new Map();',
   'const modPanels = new Map();',
   'const modList = [];',
+  // resolveOpenPanel reads the module-level panel list, which travels along.
+  app.match(/const OPENABLE_PANELS = \[[^\]]*\];/)[0],
   grab('widgetSize'),
   grab('surfaceArms'),
   grab('modWidgetDef'),
@@ -198,6 +200,7 @@ const code = [
   grab('syncPicker'),
   grab('pickSwatch'),
   grab('clockHands'),
+  grab('resolveOpenPanel'),
   grab('paintHands'),
   grab('syncClockFace'),
   grab('renderPrivacy'),
@@ -205,8 +208,7 @@ const code = [
   grab('renderWidgets'),
 ].join('\n\n');
 
-const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch, clockHands, paintHands, syncClockFace };`)(...Object.values(sandbox));
-
+const api = new Function(...Object.keys(sandbox), `${code}\nreturn { renderWidgets, surfaceArms, widgetSize, popChangedWidgets, isHexColor, tintWash, syncPicker, pickSwatch, clockHands, paintHands, syncClockFace, resolveOpenPanel };`)(...Object.values(sandbox));
 const base = {
   media: { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', artwork: null, duration: 246, elapsed: 74, rate: 1, playbackState: 1 },
   volume: { value: 0.5, muted: false },
@@ -396,6 +398,14 @@ test('clock hands turn from the time', () => {
   assert.ok(Math.abs(hands.hour - 97.75) < 1e-9, `hour ${hands.hour}`);
   assert.ok(Math.abs(hands.minute - 93) < 1e-9, `minute ${hands.minute}`);
   assert.strictEqual(hands.second, 180);
+});
+
+test('clicks and hovers open what the settings say', () => {
+  assert.strictEqual(api.resolveOpenPanel('clock', null), 'clock', 'a panel is itself');
+  assert.strictEqual(api.resolveOpenPanel('toggle', 'fallback'), 'fallback', 'toggle keeps the flip-flop');
+  assert.strictEqual(api.resolveOpenPanel('last', 'fallback'), 'fallback', 'last is answered by the caller');
+  assert.strictEqual(api.resolveOpenPanel('launch-missiles', 'fallback'), 'fallback', 'garbage falls back');
+  assert.strictEqual(api.resolveOpenPanel(undefined, 'fallback'), 'fallback', 'and so does nothing');
 });
 
 test('painting hands turns the dial', () => {

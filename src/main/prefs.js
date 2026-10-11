@@ -22,6 +22,10 @@ const DEFAULTS = {
     tints: {},
     // Locked means compact, whatever asks: long-press the island to toggle it.
     locked: false,
+    // What a click and a hover open: a panel id, or the old behaviour —
+    // 'toggle' flip-flops for clicks, 'last' reopens what was last looked at.
+    clickOpens: 'toggle',
+    hoverOpens: 'last',
     // Which face the clock panel wears: digital, analog, or both at once.
     clockFace: 'digital',
     // And in which light: dark is the island's own black, light is a white card.

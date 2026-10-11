@@ -1173,6 +1173,10 @@ function renderSettings (state) {
   // stored value over it would throw the pick away the moment any state push
   // re-renders the panel underneath the native popup.
   syncPicker(el('styleSelect'), prefs.island.style);
+  const clickPick = prefs.island.clickOpens;
+  syncPicker(el('clickSelect'), clickPick === 'toggle' || OPENABLE_PANELS.includes(clickPick) ? clickPick : 'toggle');
+  const hoverPick = prefs.island.hoverOpens;
+  syncPicker(el('hoverSelect'), hoverPick === 'last' || OPENABLE_PANELS.includes(hoverPick) ? hoverPick : 'last');
   paintSwatches(el('pillSwatches'), 'pill', isHexColor(prefs.island.pill) ? prefs.island.pill : '#000000');
   paintSwatches(el('accentSwatches'), 'accent', isHexColor(prefs.island.accent) ? prefs.island.accent : null, 'System default');
   renderTintList(state);
@@ -2012,6 +2016,18 @@ function requestSize () {
 
 // ---------------------------------------------------------------- panels
 
+/** Panels a click or a hover may open outright. Anything else falls back. */
+const OPENABLE_PANELS = ['quick', 'player', 'volume', 'mic', 'bluetooth', 'battery', 'clipboard', 'clock', 'settings'];
+
+/**
+ * Which panel a click or a hover opens. 'toggle' keeps the old flip-flop and
+ * 'last' reopens whatever was last looked at; any id that is not a panel the
+ * island has answers with the fallback instead.
+ */
+function resolveOpenPanel (pick, fallback) {
+  return OPENABLE_PANELS.includes(pick) ? pick : fallback;
+}
+
 function openPanel (name) {
   if (name === 'close' || name === view.state) {
     forgetPanel();
@@ -2131,15 +2147,20 @@ document.addEventListener('click', (event) => {
     openPanel(panel);
     return;
   }
-// Clicking the body of the island toggles it, like tapping the Dynamic Island.
-// Only while it is folded, though: an open panel is already something to look at,
-// so a click inside one belongs to whatever is under it — a switch, a list row, or
-// a gap in the arrangement.
+// Clicking the body of the island opens whatever the settings say: the old
+// flip-flop by default, a chosen panel otherwise. Only while it is folded,
+// though: an open panel is already something to look at, so a click inside one
+// belongs to whatever is under it — a switch, a list row, or a gap in the
+// arrangement.
     if (view.state === 'compact'
         && event.target.closest('#island')
         && !event.target.closest('.widget')) {
-        view.pinned = false;
-        api.action('island.toggle', {});
+        const target = resolveOpenPanel(view.snapshot?.prefs?.island?.clickOpens, null);
+        if (target) openPanel(target);
+        else {
+          view.pinned = false;
+          api.action('island.toggle', {});
+        }
     }
 });
 
@@ -2147,6 +2168,8 @@ document.addEventListener('change', (event) => {
   const { id, value, checked } = event.target;
   if (id === 'styleSelect') api.action('prefs.set', { patch: { island: { style: value } } });
   if (id === 'hoverToggle') api.action('prefs.set', { patch: { island: { hoverToExpand: checked } } });
+  if (id === 'clickSelect') api.action('prefs.set', { patch: { island: { clickOpens: value } } });
+  if (id === 'hoverSelect') api.action('prefs.set', { patch: { island: { hoverOpens: value } } });
   if (id === 'lockToggle') api.action('prefs.set', { patch: { island: { locked: checked } } });
   if (id === 'mediaKeysToggle') api.action('prefs.set', { patch: { hotkeys: { mediaKeys: checked } } });
   if (id === 'loginToggle') api.action('prefs.set', { patch: { launchAtLogin: checked } });
@@ -2680,7 +2703,7 @@ root.addEventListener('mouseenter', () => {
     if (view.locked) return;
     if (Date.now() - (view.foldedAt ?? 0) < HOVER_REOPEN_MS) return;
     if (view.hoverToExpand && view.state === 'compact' && !view.pinned) {
-        openPanel(view.lastPanel ?? 'player');
+        openPanel(resolveOpenPanel(view.snapshot?.prefs?.island?.hoverOpens, view.lastPanel ?? 'player'));
     }
 });
 root.addEventListener('mouseleave', () => {
