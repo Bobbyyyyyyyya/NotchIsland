@@ -14,7 +14,7 @@ const { HelperBridge } = require('./helper');
 const { Hotkeys } = require('./hotkeys');
 const { Island } = require('./island');
 const { MediaRemoteBridge } = require('./media-remote');
-const { copyState, trimForPush } = require('./snapshot');
+const { copyState, trimForPush, MAX_PUSH_BYTES } = require('./snapshot');
 const mods = require('./mods');
 const { Updater } = require('./updater');
 
@@ -28,9 +28,10 @@ const { Updater } = require('./updater');
  */
 
 const CLIPBOARD_HISTORY_LIMIT = 25;
-const CLIPBOARD_POLL_MS = 1000;
+const CLIPBOARD_POLL_MS = 2_000;
 const BATTERY_POLL_MS = 2_000;
-const CPU_POLL_MS = 3000;
+const MICROPHONE_POLL_MS = 5_000;
+const CPU_POLL_MS = 5_000;
 
 const helper = new HelperBridge();
 const mediaRemote = new MediaRemoteBridge();
@@ -1144,8 +1145,8 @@ function startPolling () {
   mediaTimer = setInterval(() => {
     if (state.media.duration > 0 && state.media.rate > 0) {
       state.media.elapsed = Math.min(state.media.duration, state.media.elapsed + 1);
+      island.send('media:tick', { elapsed: state.media.elapsed, playing: true });
     }
-    island.send('media:tick', { elapsed: state.media.elapsed, playing: state.media.rate > 0 });
   }, 1000);
 
   // A slow full refresh keeps timers, clock and percentages honest. Countdown
@@ -1176,9 +1177,11 @@ function startPolling () {
 
   setInterval(() => {
     state.system.micAccess = systemPreferences.getMediaAccessStatus('microphone');
-    state.system.displays = screen.getAllDisplays().length;
     push();
-  }, BATTERY_POLL_MS);
+  }, MICROPHONE_POLL_MS);
+  screen.on('display-added', () => { state.system.displays = screen.getAllDisplays().length; push(); });
+  screen.on('display-removed', () => { state.system.displays = screen.getAllDisplays().length; push(); });
+  state.system.displays = screen.getAllDisplays().length;
 }
 
 async function pollClipboard () {
@@ -1252,15 +1255,19 @@ let lastPush = '';
 
 function push ({ announce = true } = {}) {
   const fresh = refreshActivities();
-  const payload = trimForPush(snapshot());
+  const payload = snapshot();
   const encoded = JSON.stringify(payload);
-  // The helper polls a few things several times a minute; re-rendering an
-  // unchanged island is pure waste.
-  if (encoded === lastPush) return;
-  lastPush = encoded;
+  // Only artworks/clipboard histories ever exceed the budget, so trim for push
+  // only when that happens — the common path avoids stringifying twice.
+  const trimmed = Buffer.byteLength(encoded) <= MAX_PUSH_BYTES
+    ? payload
+    : trimForPush(payload);
+  const finalEncoded = trimmed === payload ? encoded : JSON.stringify(trimmed);
+  if (finalEncoded === lastPush) return;
+  lastPush = finalEncoded;
   if (announce && fresh.length) presentActivity(fresh[0]);
   try {
-    island.send('state:update', payload);
+    island.send('state:update', trimmed);
   } catch (error) {
     console.error('[push] could not deliver the state snapshot:', error.message);
   }
