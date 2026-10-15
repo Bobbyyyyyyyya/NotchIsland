@@ -1309,54 +1309,40 @@ function createTray () {
 
 function refreshTrayMenu () {
   if (!tray) return;
-  const panel = island.state === 'compact' ? null : island.state;
 tray.setContextMenu(Menu.buildFromTemplate([
      { label: 'Open the island', click: () => run('panel.open', { state: targetPanelForOpen() }) },
-     // macOS keeps the AirDrop handshake private, so the animation is demonstrated
-     // from here rather than discovered.
-     { label: 'Show an AirDrop transfer', click: () => run('transfer.start', {}) },
+     { label: 'Settings', click: () => run('panel.open', { state: 'settings' }) },
+     { label: 'Arrange the island…', click: () => run('panel.open', { state: 'layout' }) },
+     ...profileMenuItems(),
      { type: 'separator' },
-     { label: 'Timer: 5 min', click: () => run('timer.start', { minutes: 5 }) },
-     { label: 'Timer: 10 min', click: () => run('timer.start', { minutes: 10 }) },
-     { label: 'Timer: 25 min', click: () => run('timer.start', { minutes: 25 }) },
-     { type: 'separator' },
-     ...['quick', 'player', 'volume', 'mic', 'bluetooth', 'battery', 'clipboard', 'clock', 'settings'].map((id) => ({
-      label: labelForPanel(id),
-      type: 'radio',
-      checked: panel === id,
-      click: () => run('panel.open', { state: id }),
-    })),
-    { type: 'separator' },
-    { label: 'Arrange the island…', click: () => run('panel.open', { state: 'layout' }) },
-    ...profileMenuItems(),
-    {
+     {
       label: 'Expand on hover',
       type: 'checkbox',
       checked: prefs.get('island.hoverToExpand') !== false,
       click: (item) => run('prefs.set', { patch: { island: { hoverToExpand: item.checked } } }),
-    },
-    {
+     },
+     {
       label: 'Lock the island',
       type: 'checkbox',
       checked: prefs.get('island.locked') === true,
       click: () => run('island.lock', {}),
-    },
-    {
+     },
+     {
       label: 'Fill the notch (compact shape)',
       type: 'checkbox',
       checked: prefs.get('island.style') === 'notch',
       click: (item) => run('prefs.set', { patch: { island: { style: item.checked ? 'notch' : 'pill' } } }),
-    },
-    {
+     },
+     {
       label: 'Open at login',
       type: 'checkbox',
       checked: prefs.get('launchAtLogin') === true,
       click: (item) => run('prefs.set', { patch: { launchAtLogin: item.checked } }),
-    },
-    { type: 'separator' },
-    ...updateMenuItems(),
-    { type: 'separator' },
-    { label: 'Quit Notch Island', accelerator: 'Command+Q', click: () => app.quit() },
+     },
+     { type: 'separator' },
+     ...updateMenuItems(),
+     { type: 'separator' },
+     { label: 'Quit Notch Island', accelerator: 'Command+Q', click: () => app.quit() },
   ]));
 }
 
@@ -1401,21 +1387,6 @@ function updateMenuItems () {
     label: updateState === 'error' ? 'Retry update check' : 'Check for Updates…',
     click: () => run('update.check'),
   }];
-}
-
-function labelForPanel (id) {
-  return {
-    quick: 'Quick controls',
-    player: 'Player',
-    volume: 'Sound',
-    mic: 'Microphone',
-    bluetooth: 'Bluetooth',
-    battery: 'Battery',
-    clipboard: 'Clipboard',
-    clock: 'Clock',
-    sensors: 'Thermals',
-    settings: 'Settings',
-  }[id] ?? id;
 }
 
 app.on('before-quit', refreshTrayMenu);
