@@ -2758,8 +2758,13 @@ root.addEventListener('mouseenter', () => {
     if (view.snapshot?.capturing) return;
     if (view.locked) return;
     if (Date.now() - (view.foldedAt ?? 0) < HOVER_REOPEN_MS) return;
-    if (view.hoverToExpand && view.state === 'compact' && !view.pinned) {
-        openPanel(resolveOpenPanel(view.snapshot?.prefs?.island?.hoverOpens, view.lastPanel ?? 'player'));
+    // A chosen panel is an answer to “what should hover bring up?” on its own, so
+    // picking one turns hover on for it even when the old expand-on-hover switch
+    // is off: that switch only governs the “last viewed” default.
+    const hoverOpens = view.snapshot?.prefs?.island?.hoverOpens;
+    const hoverOn = view.hoverToExpand || (hoverOpens && hoverOpens !== 'last');
+    if (hoverOn && view.state === 'compact' && !view.pinned) {
+        openPanel(resolveOpenPanel(hoverOpens, view.lastPanel ?? 'player'));
     }
 });
 root.addEventListener('mouseleave', () => {
