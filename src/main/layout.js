@@ -46,7 +46,9 @@ const SURFACES = {
       { id: 'clock', label: 'Clock', icon: 'clock' },
       { id: 'airdrop', label: 'AirDrop', icon: 'airdrop' },
       { id: 'cpu', label: 'CPU', icon: 'cpu' },
-      { id: 'thermal', label: 'Thermals', icon: 'cpu' },
+      { id: 'thermal', label: 'Thermals', icon: 'thermal' },
+      { id: 'mediaSmall', label: 'Music small', icon: 'music' },
+      { id: 'mediaBig', label: 'Music big', icon: 'music' },
     ],
   },
   quick: {
@@ -111,6 +113,8 @@ const DEFAULT_SIDES = {
   airdrop: 'left',
   cpu: 'left',
   thermal: 'left',
+  mediaSmall: 'right',
+  mediaBig: 'right',
 };
 
 /**

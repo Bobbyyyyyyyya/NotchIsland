@@ -267,6 +267,45 @@ const WIDGETS = {
     },
   },
 
+  mediaSmall: {
+    label: 'Music (small)',
+    render (state) {
+      const { title, playbackState } = state.media;
+      if (playbackState !== 1) return null;
+      const node = document.createElement('button');
+      node.className = 'widget small';
+      node.dataset.panelOpen = 'player';
+      node.insertAdjacentHTML('beforeend', icon('music', { size: 14 }));
+      node.title = title || 'Apple Music';
+      return node;
+    },
+  },
+
+  mediaBig: {
+    label: 'Music (big)',
+    render (state) {
+      const { title, artwork, playbackState } = state.media;
+      if (playbackState !== 1) return null;
+      const node = document.createElement('button');
+      node.className = 'widget';
+      node.dataset.panelOpen = 'player';
+      if (artwork) {
+        const ring = document.createElement('span');
+        ring.className = 'ring';
+        ring.style.setProperty('--progress', String(progressOf(state.media)));
+        const image = document.createElement('img');
+        image.className = 'ring-art';
+        image.src = artwork;
+        ring.append(image);
+        node.append(ring);
+      } else {
+        node.insertAdjacentHTML('beforeend', icon('music', { size: 14 }));
+      }
+      node.title = title || 'Apple Music';
+      return node;
+    },
+  },
+
   charging: {
     label: 'Charging',
     render (state) {

@@ -25,7 +25,7 @@ test('a fresh arrangement is three a side, and the rest is in the palette', () =
     left: ['clock', 'clipboard', 'bluetooth'],
   });
   // Nothing is lost by being off the row: it is one drag away.
-  assert.deepStrictEqual(layout.available(clean, 'compact'), ['mic', 'charging', 'meeting', 'airdrop', 'cpu', 'thermal']);
+  assert.deepStrictEqual(layout.available(clean, 'compact'), ['mic', 'charging', 'meeting', 'airdrop', 'cpu', 'thermal', 'mediaSmall', 'mediaBig']);
   assert.strictEqual(layout.available(clean, 'compact').length
     + layout.arranged(clean, 'compact').right.length
     + layout.arranged(clean, 'compact').left.length,
@@ -175,7 +175,7 @@ test('an arrangement from before the rule is trimmed, keeping the first on each 
     right: ['media', 'volume', 'battery'],
     left: ['mic', 'clock', 'clipboard'],
   });
-  assert.deepStrictEqual(layout.available(trimmed, 'compact'), ['bluetooth', 'charging', 'meeting', 'airdrop', 'cpu', 'thermal']);
+  assert.deepStrictEqual(layout.available(trimmed, 'compact'), ['bluetooth', 'charging', 'meeting', 'airdrop', 'cpu', 'thermal', 'mediaSmall', 'mediaBig']);
 });
 
 test('a surface with no sides has no limit', () => {
