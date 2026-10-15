@@ -2880,6 +2880,10 @@ bindSlider(el('progress'), (ratio) => {
  * unclickable. Only the arms and the panels count as interactive.
  */
 function isInteractiveAt (x, y) {
+    // A locked island is a passive pill: it never opens, and it must not swallow
+    // the clicks of whatever happens to sit behind it either. Unlocking then
+    // goes through the tray or Settings, which is the whole point of locking.
+    if (view.locked && view.state === 'compact') return false;
     if (y > bandHeight()) return true; // panel area
     if (view.state !== 'compact') return true; // collapse button is in the band when expanded
     const gap = gapWidth() / 2;
