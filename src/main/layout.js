@@ -46,6 +46,7 @@ const SURFACES = {
       { id: 'clock', label: 'Clock', icon: 'clock' },
       { id: 'airdrop', label: 'AirDrop', icon: 'airdrop' },
       { id: 'cpu', label: 'CPU', icon: 'cpu' },
+      { id: 'thermal', label: 'Thermals', icon: 'cpu' },
     ],
   },
   quick: {
@@ -109,6 +110,7 @@ const DEFAULT_SIDES = {
   meeting: 'left',
   airdrop: 'left',
   cpu: 'left',
+  thermal: 'left',
 };
 
 /**
@@ -132,11 +134,12 @@ const DEFAULT_LAYOUT = {
  * rather than never seeing it. The version is what a profile carries, not the
  * preferences file, since each profile is arranged on its own.
  */
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 
 /** Items added after version 1, in the order they should land at the end. */
 const ADDED_IN = {
   2: { compact: ['charging'] },
+  3: { compact: ['thermal'] },
 };
 
 function surfaceNames () {

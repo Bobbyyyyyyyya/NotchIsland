@@ -25,7 +25,7 @@ test('a fresh arrangement is three a side, and the rest is in the palette', () =
     left: ['clock', 'clipboard', 'bluetooth'],
   });
   // Nothing is lost by being off the row: it is one drag away.
-  assert.deepStrictEqual(layout.available(clean, 'compact'), ['mic', 'charging', 'meeting', 'airdrop', 'cpu']);
+  assert.deepStrictEqual(layout.available(clean, 'compact'), ['mic', 'charging', 'meeting', 'airdrop', 'cpu', 'thermal']);
   assert.strictEqual(layout.available(clean, 'compact').length
     + layout.arranged(clean, 'compact').right.length
     + layout.arranged(clean, 'compact').left.length,
@@ -44,7 +44,7 @@ test('an item added in a later version reaches a layout that predates it', () =>
   // gain it — otherwise the one thing the island always showed would be the one
   // thing that quietly disappeared on upgrade.
   const old = { compact: ['media', 'battery'], version: 1 };
-  assert.deepStrictEqual(layout.normalise(old).compact, ['media', 'battery', 'charging']);
+  assert.deepStrictEqual(layout.normalise(old).compact, ['media', 'battery', 'charging', 'thermal']);
   // And a layout arranged since is left exactly as its owner left it, including
   // one they emptied themselves.
   assert.deepStrictEqual(
@@ -68,7 +68,7 @@ test('a layout that says nothing about its version has nothing to catch up on', 
   assert.deepStrictEqual(layout.normalise({ compact: ['media'] }).compact, ['media']);
   // One that does say: the charger was added in version 2, so a layout from before
   // it still gains it rather than the indicator quietly disappearing on upgrade.
-  assert.deepStrictEqual(layout.normalise({ compact: ['media'], version: 1 }).compact, ['media', 'charging']);
+  assert.deepStrictEqual(layout.normalise({ compact: ['media'], version: 1 }).compact, ['media', 'charging', 'thermal']);
 });
 
 test('the charger is an item, so it can be taken out', () => {
@@ -175,7 +175,7 @@ test('an arrangement from before the rule is trimmed, keeping the first on each 
     right: ['media', 'volume', 'battery'],
     left: ['mic', 'clock', 'clipboard'],
   });
-  assert.deepStrictEqual(layout.available(trimmed, 'compact'), ['bluetooth', 'charging', 'meeting', 'airdrop', 'cpu']);
+  assert.deepStrictEqual(layout.available(trimmed, 'compact'), ['bluetooth', 'charging', 'meeting', 'airdrop', 'cpu', 'thermal']);
 });
 
 test('a surface with no sides has no limit', () => {
