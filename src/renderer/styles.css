@@ -1729,3 +1729,80 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   background: rgba(255, 255, 255, 0.06);
 }
 .quick-active-row .spacer { flex: 1; }
+
+/* Thermal panel: two temperature cards, fan bars and secondary readings. */
+.thermal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.thermal-card {
+  padding: 12px 12px 10px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.thermal-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 4px;
+}
+.thermal-value {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.thermal-bar {
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.thermal-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #30d158, #ff9f0a 60%, #ff453a);
+  transition: width 0.3s ease;
+}
+.thermal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.thermal-fan {
+  display: grid;
+  grid-template-columns: 54px 1fr 62px;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  font-size: 12px;
+}
+.thermal-fan-name {
+  color: rgba(255, 255, 255, 0.72);
+}
+.thermal-fan-bar {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.thermal-fan-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.85);
+  transition: width 0.3s ease;
+}
+.thermal-fan-value {
+  text-align: right;
+  color: rgba(255, 255, 255, 0.86);
+  font-variant-numeric: tabular-nums;
+}
+.thermal-meta {
+  opacity: 0.82;
+}

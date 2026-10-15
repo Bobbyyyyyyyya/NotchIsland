@@ -120,12 +120,22 @@
            <h2>Thermals</h2>
            <button class="icon-button" data-action="close"></button>
          </div>
-         <div id="sensorsPanel">
-           <div class="row"><span>CPU</span><span id="sensorsCpu">–</span></div>
-           <div class="row"><span>GPU</span><span id="sensorsGpu">–</span></div>
+         <div class="thermal-grid">
+           <div class="thermal-card">
+             <div class="thermal-label">CPU package</div>
+             <div class="thermal-value" id="sensorsCpu">–</div>
+             <div class="thermal-bar"><div class="thermal-fill" id="sensorsCpuFill"></div></div>
+           </div>
+           <div class="thermal-card">
+             <div class="thermal-label">GPU die</div>
+             <div class="thermal-value" id="sensorsGpu">–</div>
+             <div class="thermal-bar"><div class="thermal-fill" id="sensorsGpuFill"></div></div>
+           </div>
+         </div>
+         <div class="thermal-list" id="sensorsFans"></div>
+         <div class="thermal-meta">
            <div class="row"><span>Ambient</span><span id="sensorsAmbient">–</span></div>
            <div class="row"><span>Wireless</span><span id="sensorsWireless">–</span></div>
-           <div id="sensorsFans"></div>
          </div>
        </section>
 

@@ -1512,10 +1512,14 @@ function renderBattery (state) {
   function renderSensors (state) {
     const sensors = state?.sensors ?? {};
     const fmt = (value) => (value >= 0 ? `${Math.round(value)}°` : '–');
-    const cpuEl = el('sensorsCpu');
-    if (cpuEl) cpuEl.textContent = fmt(sensors.cpu ?? -1);
-    const gpuEl = el('sensorsGpu');
-    if (gpuEl) gpuEl.textContent = fmt(sensors.gpu ?? -1);
+    const setTemp = (valueId, fillId, value) => {
+      const valueEl = el(valueId);
+      if (valueEl) valueEl.textContent = fmt(value ?? -1);
+      const fillEl = el(fillId);
+      if (fillEl) fillEl.style.width = `${clamp(((value ?? -1) + 1) >= 0 ? Math.min(100, ((value ?? 0) / 100) * 100) : 0, 0, 100)}%`;
+    };
+    setTemp('sensorsCpu', 'sensorsCpuFill', sensors.cpu);
+    setTemp('sensorsGpu', 'sensorsGpuFill', sensors.gpu);
     const ambientEl = el('sensorsAmbient');
     if (ambientEl) ambientEl.textContent = fmt(sensors.ambient ?? -1);
     const wirelessEl = el('sensorsWireless');
@@ -1523,14 +1527,23 @@ function renderBattery (state) {
     const fansEl = el('sensorsFans');
     if (fansEl) {
       const fans = sensors.fans ?? [];
+      const max = Math.max(8000, ...fans);
       fansEl.replaceChildren(...fans.map((rpm, index) => {
         const row = document.createElement('div');
-        row.className = 'row';
+        row.className = 'thermal-fan';
         const name = document.createElement('span');
+        name.className = 'thermal-fan-name';
         name.textContent = `Fan ${index + 1}`;
+        const bar = document.createElement('div');
+        bar.className = 'thermal-fan-bar';
+        const fill = document.createElement('div');
+        fill.className = 'thermal-fan-fill';
+        fill.style.width = `${Math.min(100, (Math.max(0, rpm) / max) * 100)}%`;
+        bar.append(fill);
         const value = document.createElement('span');
+        value.className = 'thermal-fan-value';
         value.textContent = `${Math.round(rpm)} RPM`;
-        row.append(name, value);
+        row.append(name, bar, value);
         return row;
       }));
     }
