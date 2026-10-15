@@ -516,6 +516,34 @@ const WIDGETS = {
       return node;
     },
   },
+
+  thermal: {
+    label: 'Thermals',
+    render (state) {
+      const sensors = state.sensors ?? {};
+      const temps = [sensors.cpu, sensors.gpu].filter((value) => value >= 0);
+      const max = temps.length ? Math.max(...temps) : null;
+      const fans = sensors.fans ?? [];
+      const spinning = fans.find((fan) => fan > 0);
+      if (max === null && spinning === undefined) return null;
+      const node = document.createElement('button');
+      node.className = 'widget readout';
+      node.dataset.panelOpen = 'sensors';
+      node.insertAdjacentHTML('beforeend', icon('cpu', { size: 14 }));
+      if (max !== null) {
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = `${Math.round(max)}°`;
+        node.append(label);
+      }
+      node.title = [
+        sensors.cpu >= 0 ? `CPU ${Math.round(sensors.cpu)}°` : null,
+        sensors.gpu >= 0 ? `GPU ${Math.round(sensors.gpu)}°` : null,
+        fans.length ? `Fan ${Math.round(fans[0])} RPM` : null,
+      ].filter(Boolean).join(' · ');
+      return node;
+    },
+  },
 };
 
 /**
@@ -846,6 +874,7 @@ function render (snapshot) {
   renderSound(snapshot);
   renderMic(snapshot);
   renderBluetooth(snapshot);
+  renderSensors(snapshot);
   renderClipboard(snapshot);
   renderSettings(snapshot);
   renderArranging();
@@ -1480,6 +1509,33 @@ function renderBattery (state) {
    const pctEl = el('batteryPanelPercent');
    if (pctEl) pctEl.textContent = `${percent}%`;
  }
+  function renderSensors (state) {
+    const sensors = state?.sensors ?? {};
+    const fmt = (value) => (value >= 0 ? `${Math.round(value)}°` : '–');
+    const cpuEl = el('sensorsCpu');
+    if (cpuEl) cpuEl.textContent = fmt(sensors.cpu ?? -1);
+    const gpuEl = el('sensorsGpu');
+    if (gpuEl) gpuEl.textContent = fmt(sensors.gpu ?? -1);
+    const ambientEl = el('sensorsAmbient');
+    if (ambientEl) ambientEl.textContent = fmt(sensors.ambient ?? -1);
+    const wirelessEl = el('sensorsWireless');
+    if (wirelessEl) wirelessEl.textContent = fmt(sensors.wireless ?? -1);
+    const fansEl = el('sensorsFans');
+    if (fansEl) {
+      const fans = sensors.fans ?? [];
+      fansEl.replaceChildren(...fans.map((rpm, index) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const name = document.createElement('span');
+        name.textContent = `Fan ${index + 1}`;
+        const value = document.createElement('span');
+        value.textContent = `${Math.round(rpm)} RPM`;
+        row.append(name, value);
+        return row;
+      }));
+    }
+  }
+
 
  /** Pulls the device out of a title like "Sending to iPad". */
  function transferName (title) {
@@ -2017,7 +2073,7 @@ function requestSize () {
 // ---------------------------------------------------------------- panels
 
 /** Panels a click or a hover may open outright. Anything else falls back. */
-const OPENABLE_PANELS = ['quick', 'player', 'volume', 'mic', 'bluetooth', 'battery', 'clipboard', 'clock', 'settings'];
+const OPENABLE_PANELS = ['quick', 'player', 'volume', 'mic', 'bluetooth', 'battery', 'clipboard', 'clock', 'sensors', 'settings'];
 
 /**
  * Which panel a click or a hover opens. 'toggle' keeps the old flip-flop and

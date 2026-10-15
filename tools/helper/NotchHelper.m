@@ -44,7 +44,99 @@ static void Emit(NSDictionary *payload) {
     fflush(stdout);
 }
 
-#pragma mark - CoreAudio helpers
+#pragma mark - SMC (read-only temperatures and fan speeds)
+
+typedef struct { char major; char minor; char build; char reserved[1]; UInt16 release; } SMCKeyData_vers_t;
+typedef struct { UInt16 version; UInt16 length; UInt32 cpuPLimit; UInt32 gpuPLimit; UInt32 memPLimit; } SMCKeyData_pLimitData_t;
+typedef struct { UInt32 dataSize; UInt32 dataType; char dataAttributes; } SMCKeyData_keyInfo_t;
+typedef char SMCBytes_t[32];
+typedef struct {
+    UInt32 key;
+    SMCKeyData_vers_t vers;
+    SMCKeyData_pLimitData_t pLimitData;
+    SMCKeyData_keyInfo_t keyInfo;
+    char result;
+    char status;
+    char data8;
+    UInt32 data32;
+    SMCBytes_t bytes;
+} SMCKeyData_t;
+
+typedef char SMCUInt32Char_t[5];
+typedef struct {
+    SMCUInt32Char_t key;
+    UInt32 dataSize;
+    SMCUInt32Char_t dataType;
+    SMCBytes_t bytes;
+} SMCVal_t;
+
+static io_connect_t smcConn = 0;
+static UInt32 _smc_strtoul(char *str, int size, int base) {
+    UInt32 total = 0;
+    for (int i = 0; i < size; i++) {
+        if (base == 16) total += str[i] << (size - 1 - i) * 8;
+        else total += (unsigned char)(str[i] << (size - 1 - i) * 8);
+    }
+    return total;
+}
+static void _smc_ultostr(char *str, UInt32 val) {
+    sprintf(str, "%c%c%c%c", (unsigned int)val >> 24, (unsigned int)val >> 16, (unsigned int)val >> 8, (unsigned int)val);
+}
+static kern_return_t SMCOpen(void) {
+    if (smcConn) return kIOReturnSuccess;
+    io_iterator_t iterator;
+    io_object_t device;
+    kern_return_t result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSMC"), &iterator);
+    if (result != kIOReturnSuccess) return result;
+    device = IOIteratorNext(iterator);
+    IOObjectRelease(iterator);
+    if (!device) return kIOReturnNotFound;
+    result = IOServiceOpen(device, mach_task_self(), 0, &smcConn);
+    IOObjectRelease(device);
+    return result;
+}
+static kern_return_t SMCCall(int index, SMCKeyData_t *input, SMCKeyData_t *output) {
+    size_t inSize = sizeof(*input), outSize = sizeof(*output);
+    memset(output, 0, sizeof(*output));
+    return IOConnectCallStructMethod(smcConn, index, input, inSize, output, &outSize);
+}
+static kern_return_t SMCReadKey(const char *key, SMCVal_t *val) {
+    if (!smcConn && SMCOpen() != kIOReturnSuccess) return kIOReturnNotReady;
+    SMCKeyData_t input, output;
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+    memset(val, 0, sizeof(*val));
+    input.key = _smc_strtoul((char *)key, 4, 16);
+    input.data8 = 9; // SMC_CMD_READ_KEYINFO
+    kern_return_t result = SMCCall(2, &input, &output);
+    if (result != kIOReturnSuccess) return result;
+    val->dataSize = output.keyInfo.dataSize;
+    _smc_ultostr(val->dataType, output.keyInfo.dataType);
+    input.keyInfo.dataSize = val->dataSize;
+    input.data8 = 5; // SMC_CMD_READ_BYTES
+    result = SMCCall(2, &input, &output);
+    if (result != kIOReturnSuccess) return result;
+    memcpy(val->bytes, output.bytes, sizeof(output.bytes));
+    return kIOReturnSuccess;
+}
+static float ReadFloatKey(const char *key) {
+    SMCVal_t val = {0};
+    if (SMCReadKey(key, &val) != kIOReturnSuccess || val.dataSize < 4) return NAN;
+    if (strncmp(val.dataType, "flt ", 4) != 0) return NAN;
+    float result = 0.0f;
+    memcpy(&result, val.bytes, sizeof(result));
+    return result;
+}
+static float BestFloatKey(NSArray<NSString *> *keys) {
+    float best = NAN;
+    for (NSString *key in keys) {
+        float value = ReadFloatKey([key UTF8String]);
+        if (!isnan(value) && value >= 0.0f && value <= 200.0f && (isnan(best) || value > best)) {
+            best = value;
+        }
+    }
+    return best;
+}
 
 // CoreAudio accepts CFString selectors for a handful of properties even though
 // the SDK types mSelector as a UInt32.
@@ -952,6 +1044,44 @@ static double MRNumber (NSDictionary *info, CFStringRef key) {
     Emit(@{@"event": @"battery", @"battery": battery});
 }
 
+- (void)publishSensors {
+    NSArray<NSString *> *cpuKeys = @[@"Tp01", @"Tp05", @"Tp09", @"Tp0D", @"Tp0b", @"Tp0L", @"Tp0S", @"Tp0a", @"Tp0T", @"Tp0v", @"Tp0f"];
+    NSArray<NSString *> *gpuKeys = @[@"Tg0D", @"Tg0P", @"Tg0G", @"Tg0f", @"Tg0p", @"Tgdd", @"Tg0m"];
+    NSArray<NSString *> *ambientKeys = @[@"TaLP", @"TA0P", @"Tm0P", @"TaRE"];
+    NSArray<NSString *> *wirelessKeys = @[@"TW0P"];
+
+    float cpu = BestFloatKey(cpuKeys);
+    float gpu = BestFloatKey(gpuKeys);
+    float ambient = BestFloatKey(ambientKeys);
+    float wireless = BestFloatKey(wirelessKeys);
+
+    NSMutableArray *fans = [NSMutableArray array];
+    SMCVal_t numberVal = {0};
+    if (SMCReadKey("FNum", &numberVal) == kIOReturnSuccess && numberVal.dataSize >= 1) {
+        int count = (int)numberVal.bytes[0];
+        if (count < 0 || count > 10) count = 0;
+        for (int i = 0; i < count; i++) {
+            char key[8];
+            snprintf(key, sizeof(key), "F%dAc", i);
+            float rpm = ReadFloatKey(key);
+            if (isnan(rpm) || rpm < 0.0f || rpm > 20000.0f) rpm = 0.0f;
+            [fans addObject:@(rpm)];
+        }
+    }
+
+    BOOL available = !isnan(cpu) || !isnan(gpu) || fans.count > 0;
+    NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:@{
+        @"event": @"sensors",
+        @"cpu": isnan(cpu) ? @(-1) : @(cpu),
+        @"gpu": isnan(gpu) ? @(-1) : @(gpu),
+        @"ambient": isnan(ambient) ? @(-1) : @(ambient),
+        @"wireless": isnan(wireless) ? @(-1) : @(wireless),
+        @"fans": fans,
+        @"available": @(available),
+    }];
+    Emit(payload);
+}
+
 - (void)publishVolume {
     float value = MAX(0, VolumeCurrent());
     BOOL muted = OutputIsMuted();
@@ -1039,6 +1169,7 @@ static double MRNumber (NSDictionary *info, CFStringRef key) {
      [self publishInput];
      [self publishBluetooth];
      [self publishBattery];
+     [self publishSensors];
      self.volumeSignature = @"";
      [self publishVolume];
      self.lastAirDropTransferring = [self isAirDropTransferring];
@@ -1056,6 +1187,10 @@ static double MRNumber (NSDictionary *info, CFStringRef key) {
 [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
          (void)timer;
          [[NotchHelper shared] publishBattery];
+     }];
+[NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *timer) {
+         (void)timer;
+         [[NotchHelper shared] publishSensors];
      }];
 [NSTimer scheduledTimerWithTimeInterval:2.5 repeats:YES block:^(NSTimer *timer) {
         (void)timer;
@@ -1115,6 +1250,8 @@ static double MRNumber (NSDictionary *info, CFStringRef key) {
         [self refreshNowPlaying];
     } else if ([command isEqualToString:@"battery"]) {
         [self publishBattery];
+    } else if ([command isEqualToString:@"sensors"]) {
+        [self publishSensors];
     } else if ([command isEqualToString:@"btConnect"] || [command isEqualToString:@"btDisconnect"]) {
         NSString *address = args[@"address"];
         for (IOBluetoothDevice *device in [IOBluetoothDevice pairedDevices]) {

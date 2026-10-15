@@ -55,6 +55,7 @@ const state = {
   devices: { list: [], output: 0, input: 0 },
   battery: { level: 1, charging: false, minutes: -1, full: true },
   bluetooth: { devices: [] },
+  sensors: { available: false, cpu: -1, gpu: -1, ambient: -1, wireless: -1, fans: [] },
   airdrop: { live: false },
   activities: [],
   clipboard: { items: [], lastSeen: '' },
@@ -1101,6 +1102,16 @@ function onHelperEvent (message) {
     case 'bluetooth':
        state.bluetooth = { devices: message.devices ?? [] };
        break;
+    case 'sensors':
+      state.sensors = {
+        available: message.available === true,
+        cpu: message.cpu ?? -1,
+        gpu: message.gpu ?? -1,
+        ambient: message.ambient ?? -1,
+        wireless: message.wireless ?? -1,
+        fans: message.fans ?? [],
+      };
+      break;
     case 'airdrop':
        // The interface being up is not a transfer. macOS has no public feed for
        // AirDrop, and `awdl0` is present whenever AirDrop is switched on, so
@@ -1139,6 +1150,7 @@ function startPolling () {
   helper.send('input');
   helper.send('battery');
   helper.send('bluetooth');
+  helper.send('sensors');
 
   // Elapsed time has to be advanced locally between now-playing updates, but
   // only while something is actually playing.
@@ -1182,6 +1194,7 @@ function startPolling () {
   screen.on('display-added', () => { state.system.displays = screen.getAllDisplays().length; push(); });
   screen.on('display-removed', () => { state.system.displays = screen.getAllDisplays().length; push(); });
   state.system.displays = screen.getAllDisplays().length;
+  setInterval(() => helper.send('sensors'), 5000);
 }
 
 async function pollClipboard () {
@@ -1395,6 +1408,7 @@ function labelForPanel (id) {
     battery: 'Battery',
     clipboard: 'Clipboard',
     clock: 'Clock',
+    sensors: 'Thermals',
     settings: 'Settings',
   }[id] ?? id;
 }

@@ -115,6 +115,20 @@
          </div>
        </section>
 
+       <section class="panel" data-panel="sensors">
+         <div class="panel-head">
+           <h2>Thermals</h2>
+           <button class="icon-button" data-action="close"></button>
+         </div>
+         <div id="sensorsPanel">
+           <div class="row"><span>CPU</span><span id="sensorsCpu">–</span></div>
+           <div class="row"><span>GPU</span><span id="sensorsGpu">–</span></div>
+           <div class="row"><span>Ambient</span><span id="sensorsAmbient">–</span></div>
+           <div class="row"><span>Wireless</span><span id="sensorsWireless">–</span></div>
+           <div id="sensorsFans"></div>
+         </div>
+       </section>
+
          <!-- a live activity, opened on its own when something happens -------- -->
         <section class="panel" data-panel="activity">
           <div class="activity" id="activityHead">
@@ -248,6 +262,7 @@
                 <option value="battery">Battery</option>
                 <option value="clipboard">Clipboard</option>
                 <option value="clock">Clock</option>
+                <option value="sensors">Thermals</option>
                 <option value="settings">Settings</option>
               </select>
             </label>
@@ -263,6 +278,7 @@
                 <option value="battery">Battery</option>
                 <option value="clipboard">Clipboard</option>
                 <option value="clock">Clock</option>
+                <option value="sensors">Thermals</option>
                 <option value="settings">Settings</option>
               </select>
             </label>
