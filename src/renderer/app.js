@@ -529,7 +529,7 @@ const WIDGETS = {
       const node = document.createElement('button');
       node.className = 'widget readout';
       node.dataset.panelOpen = 'sensors';
-      node.insertAdjacentHTML('beforeend', icon('cpu', { size: 14 }));
+      node.insertAdjacentHTML('beforeend', icon('thermal', { size: 14 }));
       if (max !== null) {
         const label = document.createElement('span');
         label.className = 'label';

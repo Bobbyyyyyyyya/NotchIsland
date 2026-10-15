@@ -41,6 +41,7 @@ const solid = {
   timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.8M9.5 2.5h5"/>',
   musicNote: '<path d="M9.5 17.4V6.6l9-1.8v10.8"/><circle cx="7" cy="17.6" r="2.6"/><circle cx="16" cy="15.8" r="2.6"/>',
   bluetooth: '<path d="m7 7 10 10-5 5V2l5 5L7 17"/>',
+  thermal: '<path d="M12 3.5v2.5"/><rect x="9.8" y="6" width="4.4" height="12" rx="2.2" fill="currentColor"/>',
   // An arrow landing on a line: something arriving from above. Used for the
   // update download, so it never has to mean "sync" or "refresh" as well.
   download: '<path d="M12 3.5v11"/><path d="m7.4 10.4 4.6 4.6 4.6-4.6"/><path d="M4 19.4h16"/>',
@@ -63,6 +64,7 @@ const stroke = {
   close: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',  // AirDrop: a circle of concentric arcs with a device in the middle. Deliberately
   // not the wifi glyph — the arcs sit *inside* the ring and open downward.
   airdrop: '<circle cx="12" cy="13.5" r="8.8"/><path d="M6.8 13.5a5.2 5.2 0 0 1 10.4 0"/><path d="M9.4 13.5a2.6 2.6 0 0 1 5.2 0"/><rect x="10.9" y="12.4" width="2.2" height="2.2" rx="0.3"/>',
+  thermal: '<path d="M12 3.5v2.5M9 3.5h6"/><rect x="9.8" y="6" width="4.4" height="12" rx="2.2"/><path d="M12 11v4"/>',
   link: '<path d="M10.4 13.6a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M13.6 10.4a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/>',
   text: '<path d="M5 6.5h14M5 12h14M5 17.5h9"/>',
   trash: '<path d="M4.5 6.5h15M9.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v1.5M6.5 6.5 7.4 19a1.6 1.6 0 0 0 1.6 1.5h6a1.6 1.6 0 0 0 1.6-1.5l.9-12.5"/>',
