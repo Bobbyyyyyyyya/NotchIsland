@@ -814,8 +814,13 @@ function presentActivity (id) {
   }, ACTIVITY_LINGER_MS);
 }
 
+function targetPanelForOpen () {
+  const pick = prefs.get('island.clickOpens');
+  if (pick && pick !== 'toggle' && pick !== 'last') return pick;
+  return state.media.title ? 'player' : 'settings';
+}
 function toggleIsland () {
-  const next = island.state === 'compact' ? (state.media.title ? 'player' : 'settings') : 'compact';
+  const next = island.state === 'compact' ? targetPanelForOpen() : 'compact';
   run('panel.open', { state: next });
 }
 
@@ -1306,7 +1311,7 @@ function refreshTrayMenu () {
   if (!tray) return;
   const panel = island.state === 'compact' ? null : island.state;
 tray.setContextMenu(Menu.buildFromTemplate([
-     { label: 'Open the island', click: () => run('panel.open', { state: 'settings' }) },
+     { label: 'Open the island', click: () => run('panel.open', { state: targetPanelForOpen() }) },
      // macOS keeps the AirDrop handshake private, so the animation is demonstrated
      // from here rather than discovered.
      { label: 'Show an AirDrop transfer', click: () => run('transfer.start', {}) },
