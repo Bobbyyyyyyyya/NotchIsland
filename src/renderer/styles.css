@@ -1806,3 +1806,12 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
 .thermal-meta {
   opacity: 0.82;
 }
+
+/* A small music widget can still show the sleeve instead of a generic note. */
+.small-art {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}

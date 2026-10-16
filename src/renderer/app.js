@@ -270,12 +270,20 @@ const WIDGETS = {
   mediaSmall: {
     label: 'Music (small)',
     render (state) {
-      const { title, playbackState } = state.media;
+      const { title, artwork, playbackState } = state.media;
       if (playbackState !== 1) return null;
       const node = document.createElement('button');
       node.className = 'widget small';
       node.dataset.panelOpen = 'player';
-      node.insertAdjacentHTML('beforeend', icon('music', { size: 14 }));
+      if (artwork) {
+        const image = document.createElement('img');
+        image.className = 'small-art';
+        image.src = artwork;
+        image.alt = '';
+        node.append(image);
+      } else {
+        node.insertAdjacentHTML('beforeend', icon('music', { size: 14 }));
+      }
       node.title = title || 'Apple Music';
       return node;
     },
