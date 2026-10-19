@@ -30,16 +30,17 @@ class UpdateFeedPlugin {
 
   getHooks () {
     return {
-      packageAfterCopy: async (resources) => this.writeAppConfig(resources),
+      packageAfterCopy: async (_config, buildPath, _electronVersion, _platform, _arch) => this.writeAppConfig(buildPath),
       postMake: async (_forgeConfig, makeResults) => this.writeChannelFile(makeResults),
     };
   }
 
   /**
-   * Forge hands over `Contents/Resources`, which is where the updater reads its
-   * configuration from on macOS.
+   * Forge hands over the app folder, for instance
+   * `Notch Island.app/Contents/Resources/app`: the updater reads
+   * `app-update.yml` from the Resources folder one level up.
    */
-  async writeAppConfig (resources) {
+  async writeAppConfig (buildPath) {
     const feed = repository();
     if (!feed) {
       // Packaging is also what a developer does to look at their own build, and
@@ -47,7 +48,7 @@ class UpdateFeedPlugin {
       console.warn('[update-feed] no GitHub repository found, the build will not update itself');
       return;
     }
-    const target = path.join(resources, 'app-update.yml');
+    const target = path.join(path.dirname(path.resolve(buildPath)), 'app-update.yml');
     await fs.writeFile(target, appUpdateConfig(feed));
     console.log(`[update-feed] ${path.relative(process.cwd(), target)} → ${feed.owner}/${feed.repo}`);
   }
