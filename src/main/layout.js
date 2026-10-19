@@ -198,12 +198,22 @@ function sizeOf (layout, surface, id) {
  * island has to stay removed, which is the whole point of being able to arrange
  * it. A new item only arrives through `upgrade`.
  */
+// The small and big Music widgets are alternatives to the adaptive one, not
+// three places to mount the same feed: an island row senses one music widget,
+// so later members of the family quietly step aside.
+const MEDIA_FAMILY = new Set(['media', 'mediaSmall', 'mediaBig']);
+
 function normaliseSurface (surface, ids) {
   const known = new Set(itemsOf(surface).map((item) => item.id));
   const seen = new Set();
+  let familyTaken = false;
   const out = [];
   for (const id of Array.isArray(ids) ? ids : []) {
     if (!known.has(id) || seen.has(id)) continue;
+    if (MEDIA_FAMILY.has(id)) {
+      if (familyTaken) continue;
+      familyTaken = true;
+    }
     seen.add(id);
     out.push(id);
   }
