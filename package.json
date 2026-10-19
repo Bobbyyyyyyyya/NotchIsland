@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node --test \"test/**/*.test.js\"",
+    "test": "node --test test/*.test.js",
     "icon": "node tools/make-icon.js",
     "package": "electron-forge make",
     "dist": "electron-forge make && electron-forge publish",
