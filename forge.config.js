@@ -62,6 +62,10 @@ module.exports = {
     // Registers notch-island:// in the packaged app, so other programs can
     // open panels, toast a line and start timers with a URL.
     protocols: [{ name: 'Notch Island URL', schemes: ['notch-island'] }],
+    // Without a real identity we still want a signature: unsigned apps are
+    // what Gatekeeper greets with “…is damaged”. `-` asks codesign for an
+    // ad-hoc signature, which is enough for the app to open with the normal
+    // right-click → Open prompt.
     osxSign: identity
       ? {
           identity,
@@ -69,7 +73,11 @@ module.exports = {
           entitlements: path.join(__dirname, 'entitlements.plist'),
           'entitlements-inherit': path.join(__dirname, 'entitlements.plist'),
         }
-      : false,
+      : {
+          identity: '-',
+          identityValidation: false,
+          hardenedRuntime: false,
+        },
     osxNotarize: notarizeKey ?? notarizePassword ?? undefined,
   },
   rebuildConfig: {},

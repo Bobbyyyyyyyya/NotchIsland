@@ -36,9 +36,10 @@ function withoutSecrets (run) {
   }
 }
 
-test('a checkout without secrets builds unsigned, like now', () => {
+test('a checkout without secrets builds with an ad-hoc signature', () => {
   const config = withoutSecrets(loadFresh);
-  assert.ok(!config.packagerConfig.osxSign, 'no identity, no signature');
+  assert.strictEqual(config.packagerConfig.osxSign.identity, '-', 'no identity, ad-hoc still signs');
+  assert.strictEqual(config.packagerConfig.osxSign.hardenedRuntime, false, 'ad-hoc cannot ask for hardened runtime');
   assert.ok(!config.packagerConfig.osxNotarize, 'no credentials, no notarization');
 });
 
