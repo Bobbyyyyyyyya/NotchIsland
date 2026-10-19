@@ -35,18 +35,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Import signing certificate
-        if: secrets.APPLE_CERTIFICATE_P12 != ''
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > /tmp/signing.p12
-          security create-keychain -p actions build.keychain
-          security import /tmp/signing.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -s build.keychain
-          security unlock-keychain -p actions build.keychain
-          rm /tmp/signing.p12
       - name: Make and publish
         run: npm run dist
         env:
