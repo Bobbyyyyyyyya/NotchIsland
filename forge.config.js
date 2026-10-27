@@ -81,6 +81,25 @@ module.exports = {
     osxNotarize: notarizeKey ?? notarizePassword ?? undefined,
   },
   rebuildConfig: {},
+  hooks: {
+    /**
+     * The DMG that ships from this machine has to open on a Mac that never saw
+     * it before. Packager's ad-hoc signing left the framework and the main
+     * executable with signatures macOS refused to load together ("different
+     * Team IDs"), so the app died at launch with nothing on screen. Re-signing
+     * the whole bundle in one pass makes the signatures agree, which is what
+     * Gatekeeper and the loader both want.
+     */
+    postPackage: async (_forgeConfig, result) => {
+      const { execFileSync } = require('node:child_process');
+      for (const platform of Object.keys(result.platforms)) {
+        for (const appPath of result.platforms[platform]) {
+          if (platform !== 'darwin') continue;
+          execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
+        }
+      }
+    },
+  },
   makers: [
     {
       name: '@electron-forge/maker-zip',

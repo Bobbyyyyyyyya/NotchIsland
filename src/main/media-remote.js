@@ -1,7 +1,7 @@
 'use strict';
 
 const { EventEmitter } = require('node:events');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
@@ -99,6 +99,7 @@ class MediaRemoteBridge extends EventEmitter {
     this.current = {};
     this._restarts = 0;
     this._stopping = false;
+    this._launching = false;
     this._trackKey = null;
     this._artworkKey = null;
     this._handoverTimer = null;
@@ -124,7 +125,11 @@ class MediaRemoteBridge extends EventEmitter {
     return path.join(this.frameworkPath, 'Versions', 'A', 'MediaRemoteAdapter');
   }
 
-  /** Builds the adapter framework from the vendored sources, when stale. */
+  /**
+   * Builds the adapter framework from the vendored sources, when stale. The
+   * compile is async on purpose: clang costs seconds on a cold cache, and
+   * blocking the main process for those froze the whole island at launch.
+   */
   build () {
     if (!fs.existsSync(CLANG)) throw new Error('clang is not installed (install the Xcode Command Line Tools)');
     if (!fs.existsSync(this.scriptPath)) throw new Error(`adapter script missing at ${this.scriptPath}`);
@@ -138,62 +143,83 @@ class MediaRemoteBridge extends EventEmitter {
     const newest = Math.max(...sources.map((file) => fs.statSync(file).mtimeMs),
       fs.statSync(path.join(this.sourceRoot, 'include', 'MediaRemoteAdapter.h')).mtimeMs);
     const needsBuild = !fs.existsSync(binary) || newest > fs.statSync(binary).mtimeMs;
-    if (!needsBuild) return binary;
+    if (!needsBuild) return Promise.resolve(binary);
 
     fs.mkdirSync(path.dirname(binary), { recursive: true });
     const frameworkDir = path.dirname(path.dirname(path.dirname(binary)));
     fs.mkdirSync(path.join(frameworkDir, 'Versions', 'A', 'Headers'), { recursive: true });
     fs.mkdirSync(path.join(frameworkDir, 'Versions', 'A', 'Resources'), { recursive: true });
 
-    const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
-    const result = spawnSync(CLANG, [
-      '-arch', arch,
-      '-fobjc-arc', '-fvisibility=default', '-O2', '-w',
-      '-I', path.join(this.sourceRoot, 'include'),
-      '-I', path.join(this.sourceRoot, 'src'),
-      ...sources,
-      '-dynamiclib', '-o', binary,
-      '-framework', 'Foundation',
-      '-framework', 'AppKit',
-      '-framework', 'UniformTypeIdentifiers',
-      '-install_name', '@rpath/MediaRemoteAdapter.framework/Versions/A/MediaRemoteAdapter',
-    ], { encoding: 'utf8', timeout: 180000 });
-    if (result.status !== 0) {
-      throw new Error(`adapter build failed: ${(result.stderr || '').split('\n').slice(-3).join(' ')}`);
-    }
+    return new Promise((resolve, reject) => {
+      const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+      const result = spawn(CLANG, [
+        '-arch', arch,
+        '-fobjc-arc', '-fvisibility=default', '-O2', '-w',
+        '-I', path.join(this.sourceRoot, 'include'),
+        '-I', path.join(this.sourceRoot, 'src'),
+        ...sources,
+        '-dynamiclib', '-o', binary,
+        '-framework', 'Foundation',
+        '-framework', 'AppKit',
+        '-framework', 'UniformTypeIdentifiers',
+        '-install_name', '@rpath/MediaRemoteAdapter.framework/Versions/A/MediaRemoteAdapter',
+      ], { stdio: ['ignore', 'ignore', 'pipe'] });
+      let stderr = '';
+      result.stderr.on('data', (chunk) => { stderr += chunk; });
+      result.on('error', (error) => reject(new Error(`adapter build failed: ${error.message}`)));
+      result.on('exit', (code) => {
+        if (code !== 0) {
+          reject(new Error(`adapter build failed: ${(stderr || '').split('\n').slice(-3).join(' ')}`));
+          return;
+        }
 
-    // A versioned framework layout, which is what the script expects to find.
-    fs.copyFileSync(path.join(this.sourceRoot, 'include', 'MediaRemoteAdapter.h'),
-      path.join(frameworkDir, 'Versions', 'A', 'Headers', 'MediaRemoteAdapter.h'));
-    for (const [link, target] of [
-      ['Versions/Current', 'A'],
-      ['MediaRemoteAdapter', 'Versions/Current/MediaRemoteAdapter'],
-      ['Headers', 'Versions/Current/Headers'],
-      ['Resources', 'Versions/Current/Resources'],
-    ]) {
-      const at = path.join(frameworkDir, link);
-      try { fs.unlinkSync(at); } catch {}
-      fs.symlinkSync(target, at);
-    }
-    fs.chmodSync(binary, 0o755);
-    return binary;
+        // A versioned framework layout, which is what the script expects to find.
+        try {
+          fs.copyFileSync(path.join(this.sourceRoot, 'include', 'MediaRemoteAdapter.h'),
+            path.join(frameworkDir, 'Versions', 'A', 'Headers', 'MediaRemoteAdapter.h'));
+          for (const [link, target] of [
+            ['Versions/Current', 'A'],
+            ['MediaRemoteAdapter', 'Versions/Current/MediaRemoteAdapter'],
+            ['Headers', 'Versions/Current/Headers'],
+            ['Resources', 'Versions/Current/Resources'],
+          ]) {
+            const at = path.join(frameworkDir, link);
+            try { fs.unlinkSync(at); } catch {}
+            fs.symlinkSync(target, at);
+          }
+          fs.chmodSync(binary, 0o755);
+          resolve(binary);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
   }
 
   start () {
-    if (this.process) return;
+    if (this.process || this._launching) return;
     this._stopping = false;
-    try {
-      this.build();
-    } catch (error) {
-      this._setStatus(false, error.message);
-      console.warn('[media] unavailable:', error.message);
-      return;
-    }
+    this._launching = true;
+    this.build()
+      .then((binary) => {
+        this._launching = false;
+        // A stop() that ran while clang was busy must not leave a child behind.
+        if (this.process || this._stopping) return;
+        this._spawn(binary);
+      })
+      .catch((error) => {
+        this._launching = false;
+        this._setStatus(false, error.message);
+        console.warn('[media] unavailable:', error.message);
+      });
+  }
 
+  _spawn (binary) {
     const child = spawn(PERL, [
       this.scriptPath, this.frameworkPath, 'stream', '--debounce=150',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
     this.process = child;
+    this._launching = false;
 
     readline.createInterface({ input: child.stdout }).on('line', (line) => {
       let message;

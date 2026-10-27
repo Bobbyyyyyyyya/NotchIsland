@@ -1,7 +1,7 @@
 'use strict';
 
 const { EventEmitter } = require('node:events');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
@@ -51,7 +51,13 @@ class HelperBridge extends EventEmitter {
     return path.join(app.getPath('userData'), 'helper', 'NotchHelper');
   }
 
-  /** Compiles the helper when the source is newer than the cached binary. */
+  /**
+   * Compiles the helper when the source is newer than the cached binary.
+   *
+   * The compile is async on purpose: clang takes a while on a cold cache, and
+   * blocking the main process for those seconds froze everything the island
+   * does at the exact moment the user decides whether the app is any good.
+   */
   compile () {
     const source = this.sourcePath;
     if (!fs.existsSync(source)) throw new Error(`helper source missing at ${source}`);
@@ -61,37 +67,60 @@ class HelperBridge extends EventEmitter {
     const needsBuild = !fs.existsSync(binary)
       || fs.statSync(source).mtimeMs > fs.statSync(binary).mtimeMs;
 
-    if (needsBuild) {
-      fs.mkdirSync(path.dirname(binary), { recursive: true });
-      const result = spawnSync(CLANG, [
+    if (!needsBuild) return Promise.resolve(binary);
+
+    return new Promise((resolve, reject) => {
+      fs.mkdir(path.dirname(binary), { recursive: true }, () => {});
+      const result = spawn(CLANG, [
         '-fobjc-arc', '-O2', '-w',
         ...FRAMEWORKS,
         source, '-o', binary,
-      ], { encoding: 'utf8', timeout: 120000 });
-      if (result.status !== 0) {
-        throw new Error(`helper build failed: ${(result.stderr || '').split('\n').slice(-3).join(' ')}`);
-      }
-    }
-    fs.chmodSync(binary, 0o755);
-    return binary;
+      ], { stdio: ['ignore', 'ignore', 'pipe'] });
+      let stderr = '';
+      result.stderr.on('data', (chunk) => { stderr += chunk; });
+      result.on('error', (error) => reject(new Error(`helper build failed: ${error.message}`)));
+      result.on('exit', (code) => {
+        if (code !== 0) {
+          reject(new Error(`helper build failed: ${(stderr || '').split('\n').slice(-3).join(' ')}`));
+          return;
+        }
+        fs.chmod(binary, 0o755, () => resolve(this.binaryPath));
+      });
+    });
   }
 
   start () {
-    if (this.process) return;
+    if (this.process || this._launching) return;
+    this._launching = true;
+    const settle = () => { this._launching = false; };
     let binary;
     try {
       binary = this.compile();
     } catch (error) {
       this.available = false;
       this.reason = error.message;
+      settle();
       console.warn('[helper] unavailable:', error.message);
       this.emit('status', this.status());
       return;
     }
 
-const child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'] });
-    this.process = child;
-    child.stdin?.on("error", () => {});
+    Promise.resolve(binary).then((resolved) => {
+      settle();
+      // A stop() that ran while clang was busy would otherwise leave a child behind.
+      if (this.process || this._stopping) return;
+      this._stopping = false;
+      const child = spawn(resolved, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+      this.process = child;
+      child.stdin?.on('error', () => {});
+    }, (error) => {
+      this.available = false;
+      this.reason = error.message;
+      settle();
+      console.warn('[helper] unavailable:', error.message);
+      this.emit('status', this.status());
+    }).then(() => {      const child = this.process;
+      if (!child) return;
 
     readline.createInterface({ input: child.stdout }).on('line', (line) => {
       let message;
@@ -109,22 +138,26 @@ const child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'] });
       this.emit('event', message);
     });
 
-    child.stderr.on('data', (chunk) => console.warn('[helper]', String(chunk).trim()));
-    child.on('exit', (code) => {
-      this.process = null;
-      this.available = false;
-      this.reason = `helper exited (${code})`;
-      this.emit('status', this.status());
-      // Guard against a crash loop; give up after a few quick restarts.
-      if (this._restarts < 3) {
-        this._restarts = (this._restarts ?? 0) + 1;
-        clearTimeout(this._restartTimer);
-        this._restartTimer = setTimeout(() => this.start(), 2000 * this._restarts);
-      }
+      child.stderr.on('data', (chunk) => console.warn('[helper]', String(chunk).trim()));
+      child.on('exit', (code) => {
+        this.process = null;
+        this.available = false;
+        this.reason = `helper exited (${code})`;
+        this.emit('status', this.status());
+        // Guard against a crash loop; give up after a few quick restarts.
+        if (this._restarts < 3) {
+          this._restarts = (this._restarts ?? 0) + 1;
+          clearTimeout(this._restartTimer);
+          this._restartTimer = setTimeout(() => this.start(), 2000 * this._restarts);
+        }
+      });
     });
   }
 
   _restarts = 0;
+
+  /** True while clang is busy: a stop() in that window has to linger. */
+  _launching = false;
 
   send (command, args = {}) {
     if (!this.process?.stdin?.writable) return false;
@@ -146,6 +179,7 @@ const child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'] });
   }
 
 stop () {
+    this._stopping = true;
     clearTimeout(this._restartTimer);
     try { this.process?.stdin?.removeAllListeners('error'); } catch {}
     this.process?.kill();

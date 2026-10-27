@@ -80,7 +80,7 @@ class Island {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        backgroundThrottling: false,
+        backgroundThrottling: true,
         spellcheck: false,
       },
     });
