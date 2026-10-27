@@ -252,23 +252,6 @@ Two details that Forge does not do on its own, both handled by the
   Forge runs makers concurrently — no maker can count on the zip already existing —
   and the digest has to be of the file that is actually uploaded.
 
-The repository comes from `GITHUB_REPOSITORY` (`owner/repo`, which a release
-workflow already knows) or from the `origin` remote. Without either one
-`npm run package` still works, but the build gets no feed and `npm run dist`
-stops with an explanation.
-The build is unsigned by default, so a *first* install from such a DMG has
-to be opened with right-click → Open, or Gatekeeper will refuse it.
-Alternatively, `xattr -cr /Applications/Notch\ Island.app` clears the download
-quarantine in one command. Updates installed by the updater itself are not
-quarantined and do not have that problem.
-
-A release build signs and notarizes instead, and then the DMG opens without
-the warning. It needs a Developer ID certificate plus notarization credentials,
-all read from the environment so none of it lands in the repository (see the
-top of `forge.config.js` for the exact variables). The release workflow takes
-the same values as repository secrets and runs the whole chain — tests, signed
-and notarized build, published GitHub release — on every version tag.
-
 ## For other apps
 
 Anything that can open a URL can drive the island — a script, a shortcut, a
