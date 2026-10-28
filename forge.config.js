@@ -92,9 +92,17 @@ module.exports = {
      */
     postPackage: async (_forgeConfig, { platform, outputPaths }) => {
       const { execFileSync } = require('node:child_process');
+      const fs = require('node:fs');
       if (platform !== 'darwin') return;
-      for (const appPath of outputPaths) {
-        execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
+      for (const out of outputPaths) {
+        // Forge hands over the versioned directory; the bundle to sign is the
+        // .app inside it — or the path itself when it already is one.
+        const apps = out.endsWith('.app')
+          ? [out]
+          : fs.readdirSync(out).filter((name) => name.endsWith('.app')).map((name) => path.join(out, name));
+        for (const appPath of apps) {
+          execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
+        }
       }
     },
   },
