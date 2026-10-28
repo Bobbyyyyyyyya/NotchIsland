@@ -90,13 +90,11 @@ module.exports = {
      * the whole bundle in one pass makes the signatures agree, which is what
      * Gatekeeper and the loader both want.
      */
-    postPackage: async (_forgeConfig, result) => {
+    postPackage: async (_forgeConfig, { platform, outputPaths }) => {
       const { execFileSync } = require('node:child_process');
-      for (const platform of Object.keys(result.platforms)) {
-        for (const appPath of result.platforms[platform]) {
-          if (platform !== 'darwin') continue;
-          execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
-        }
+      if (platform !== 'darwin') return;
+      for (const appPath of outputPaths) {
+        execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
       }
     },
   },
