@@ -1908,6 +1908,11 @@ function setVar (name, value) {
 
 function applyFrame (frame) {
   const stateChanged = frame.state !== view.appliedState;
+  // The window is bigger than the island while a transition has the room: the
+  // island draws itself at its own offset inside it.
+  const win = frame.window ?? frame;
+  const offX = view.windowX = (frame.x - win.x);
+  const offY = view.windowY = (frame.y - win.y);
   view.frame = frame;
   view.state = frame.state;
   view.notch = frame.notch;
@@ -1915,6 +1920,8 @@ function applyFrame (frame) {
   syncPanelWidth();
   setVar('--island-w', `${frame.width}px`);
   setVar('--island-h', `${frame.islandHeight}px`);
+  setVar('--island-left', `${offX}px`);
+  setVar('--island-top', `${offY}px`);
   setVar('--band', `${view.band}px`);
   setVar('--notch-w', `${gapWidth()}px`);
   if (frame.radius !== undefined) setVar('--radius', formatRadius(frame.radius));
@@ -2909,7 +2916,13 @@ function reportPointer (interactive) {
 }
 
 document.addEventListener('mousemove', (event) => {
-  reportPointer(event.clientX < view.frame.width && isInteractiveAt(event.clientX, event.clientY));
+  // The window may be wider than the island while a transition keeps the room:
+  // only the island's own box is interactive, everything around it stays
+  // click-through, exactly as when the window hugged the island.
+  const ix = event.clientX - (view.windowX ?? 0);
+  const iy = event.clientY - (view.windowY ?? 0);
+  const inside = ix >= 0 && ix < view.frame.width && iy >= 0 && iy < view.frame.islandHeight;
+  reportPointer(inside && isInteractiveAt(ix, iy));
 });
 document.addEventListener('mouseleave', () => reportPointer(false));
 

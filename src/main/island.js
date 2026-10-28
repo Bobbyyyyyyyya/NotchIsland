@@ -42,6 +42,11 @@ class Island {
     /** Called whenever `state` changes, so the tray radio items can follow. */
     this.onStateChange = null;
     this.frame = { x: 0, y: 0, width: 220, height: 32 };
+    /** The bounds of the NSWindow itself. It is deliberately decoupled from the
+        island frame: see `_syncWindow` — the window is only resized when a
+        transition needs the room, never once per animation frame. */
+    this._window = null;
+    this._windowSet = null;
     this.pointerInside = false;
     this.hovering = false;
     this.requestedWidth = 0;
@@ -58,8 +63,11 @@ class Island {
   create () {
     nativeTheme.themeSource = 'dark';
 
+    const start = this._bounds(this.frame.width, this.frame.height);
+    this._window = { ...start };
+    this._windowSet = { ...start };
     this.window = new BrowserWindow({
-      ...this._bounds(this.frame.width, this.frame.height),
+      ...start,
       frame: false,
       transparent: true,
       backgroundColor: '#00000000',
@@ -330,6 +338,10 @@ class Island {
       });
 
       if (done || Date.now() > this._tweenDeadline) {
+        // Settle before the final frame: `_applyFrame` shrinks the window to
+        // the exact island size when nothing is under way any more, and the
+        // last frame must be the one that lands on the shrunken window.
+        this._stopTween();
         this._applyFrame({
           x: wanted.x,
           y: wanted.y,
@@ -337,7 +349,6 @@ class Island {
           height: wanted.height,
           radius: wanted.radius,
         });
-        this._stopTween();
         return;
       }
       // Scheduled against the frame's own start so the loop lands on the
@@ -370,32 +381,87 @@ class Island {
   }
 
   _applyFrame (frame) {
-    // Resizing an always-on-top window is the expensive part of every frame, so
-    // a frame the window server would not be able to tell apart is skipped. The
-    // spring's tail sits inside one pixel for a surprisingly long time. The
-    // state is part of the comparison: it is the one thing the renderer must be
-    // told about even when the geometry has not moved.
+    // The work macOS cannot forgive twice: resizing the window. `setFrame` on
+    // an always-on-top transparent window is a costly operation on its own, so
+    // it happens through `_syncWindow` (once per transition, not once per
+    // frame) and the spring keeps running *inside* the window. Only a change
+    // in the thing the renderer must be told about is pushed to it here.
+    this.frame = frame;
+
     const sent = this._lastSent;
     const identical = Boolean(sent)
       && sent.x === frame.x && sent.y === frame.y
       && sent.width === frame.width && sent.height === frame.height
       && sent.radius === frame.radius && sent.state === this.state;
-    this.frame = frame;
-    if (identical) return;
+
+    const win = this._syncWindow(frame);
+    if (identical && sent.window && win
+      && sent.window.x === win.x && sent.window.y === win.y
+      && sent.window.width === win.width && sent.window.height === win.height) return;
     if (!this.window || this.window.isDestroyed()) return;
     this._lastSent = {
       x: frame.x, y: frame.y, width: frame.width, height: frame.height,
       radius: frame.radius, state: this.state,
+      window: win,
     };
-    this.window.setBounds(frame, false);
     this.window.webContents.send('island:frame', {
       ...frame,
-      // The renderer only uses the top part of the window; the rest is shadow.
+      // The island is drawn inside the window at its own offset, so the
+      // renderer can place it there instead of being handed the full window.
       islandHeight: frame.height - SHADOW_ROOM,
       radius: frame.radius ?? this.targetRadius,
       state: this.state,
       notch: this.notch,
+      window: win,
     });
+  }
+
+  /**
+   * Makes the window big enough to contain `frame`. While a spring is running
+   * (or a drag under way) the frame will still move before it stops, so the
+   * window is grown once to cover both the current bounds and every frame that
+   * could still come — that way macOS resizes the window at the start of a
+   * transition and shrinks it once more at the end, both invisible because the
+   * island only fills the part of the window its frame claims.
+   */
+  _syncWindow (frame) {
+    if (!this.window || this.window.isDestroyed()) return this._window;
+    const settle = !this._springs && !this._drag;
+    if (settle) this._window = frame;
+    else this._window = this._union(this._window ?? frame, this._drag ? this._reach() : frame);
+    const bounds = this._window;
+    const set = this._windowSet;
+    if (set && set.x === bounds.x && set.y === bounds.y
+      && set.width === bounds.width && set.height === bounds.height) return bounds;
+    this._windowSet = { ...bounds };
+    this.window.setBounds({ ...bounds }, false);
+    return bounds;
+  }
+
+  /** Smallest window that contains both a and b. */
+  _union (a, b) {
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    return {
+      x, y,
+      width: Math.max(a.x + a.width, b.x + b.width) - x,
+      height: Math.max(a.y + a.height, b.y + b.height) - y,
+    };
+  }
+
+  /**
+   * How far a single island can ever spread under a drag: full width limit and
+   * the open island's height. Dragging reserves the room once and then every
+   * move inside it is free.
+   */
+  _reach () {
+    const centre = this._centreX();
+    return {
+      x: Math.round(centre - this.dynamicMaxWidth / 2),
+      y: 0,
+      width: Math.round(this.dynamicMaxWidth),
+      height: Math.round(this.expandedHeight + SHADOW_ROOM),
+    };
   }
 
   setState (state) {
