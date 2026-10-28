@@ -191,9 +191,12 @@ function updateActivity (update) {
  * Turns the current system state into the list of activities the island shows.
  *
  * @param {object} state the main process snapshot
+ * @param {string[]} arrangement the ids the compact row is arranged with, so an
+ *   activity may stand down when the row's own widget is already showing it —
+ *   a song in the media widget is not handed a bubble beside itself as well.
  * @returns {Array<object>} activities, most important first
  */
-function derive (state) {
+function derive (state, arrangement = []) {
   const activities = [];
   const now = Date.now();
 
@@ -237,7 +240,10 @@ function derive (state) {
   }
 
   const { media } = state;
-if (media.title && media.rate > 0) {
+  // The row's own media widget is still showing the song: adding the activity
+  // bubble put the same cover and title on screen twice, and the widget is the
+  // one the user arranged, so the widget wins.
+ if (media.title && media.rate > 0 && !arrangement.includes('media')) {
      activities.push({
        id: 'media',
        kind: 'media',

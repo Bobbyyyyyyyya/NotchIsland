@@ -31,6 +31,20 @@ test('a paused track is not an activity', () => {
   assert.deepStrictEqual(list, []);
 });
 
+test('a song the compact row already shows stands down', () => {
+  const list = activities.derive({
+    ...base,
+    media: { title: 'Hey Jude', artist: 'The Beatles', artwork: null, duration: 200, elapsed: 50, rate: 1 },
+    compact: { right: ['media', 'volume'], left: [] },
+  }, ['media', 'volume']);
+  assert.deepStrictEqual(list, []);
+  // Nothing arranged: the bubble is the only place the song shows.
+  assert.strictEqual(activities.derive({
+    ...base,
+    media: { title: 'Hey Jude', artist: 'The Beatles', artwork: null, duration: 200, elapsed: 50, rate: 1 },
+  }).length, 1);
+});
+
 test('a connected accessory with a battery is reported', () => {
   const list = activities.derive({
     ...base,

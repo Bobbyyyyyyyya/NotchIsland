@@ -782,7 +782,7 @@ function refreshActivities () {
 
   const previous = state.activities;
   const next = activities
-    .derive(state)
+    .derive(state, [...(state.compact?.right ?? []), ...(state.compact?.left ?? [])])
     .filter((activity) => !dismissed.has(activity.id));
   state.activities = next;
 
