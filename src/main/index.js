@@ -84,7 +84,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    island.window?.show();
+    // The first instance may be going away while a second is waking, and an
+    // app given show() on a destroyed window dies with a TypeError dialog.
+    if (!island.window?.isDestroyed()) island.window?.show();
     for (const arg of argv ?? []) handleDeepLink(arg);
   });
   // A link opened while running lands here; a link opened cold arrives in the
