@@ -55,8 +55,15 @@ module.exports = {
     // Compiles the helper and the MediaRemote adapter into Resources, so a
     // released build runs without the Xcode Command Line Tools on the user's
     // Mac. A build where clang is missing still ships, pieces and all.
+    // Packager calls these hooks through util.promisify, which only resolves
+    // when the callback it appends gets called — `serialHooks` is the wrapper
+    // that does that, so a promise-returning hook function settles instead of
+    // leaving the package phase waiting on a promise nothing will ever
+    // resolve (the process would then simply run dry and exit 0 mid-build).
     afterCopy: [
-      require('./tools/build-native').afterCopyHook,
+      require('@electron/packager').serialHooks([
+        require('./tools/build-native').afterCopyHook,
+      ]),
     ],
     extendInfo: {
       NSAppleEventsUsageDescription:
