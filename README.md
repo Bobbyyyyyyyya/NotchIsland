@@ -4,6 +4,23 @@ A macOS Dynamic Island for the MacBook camera housing: a media player, sound and
 microphone control, Bluetooth accessories, clipboard history and system status —
 all in the notch, with F7–F12 working the way they do on Apple hardware.
 
+## Install
+
+1. Download `Notch.Island-<version>-arm64.dmg` from the
+   [latest GitHub release](https://github.com/Bobbyyyyyyyya/NotchIsland/releases/latest)
+   (Apple Silicon; macOS 13.0 or newer).
+2. Open it and drag *Notch Island* into *Applications*.
+3. On the first launch Gatekeeper may note the developer cannot be verified —
+   the build is signed ad hoc and not notarised. Right-click the app and choose
+   *Open*, then *Open* again; it starts normally from then on.
+4. Nothing else to do: the island appears in the notch at once and lives in the
+   tray menu bar for everything else.
+
+The music widgets, volume, battery and microphone are handled by a small system
+bridge the app compiles itself with the system `clang` — the Xcode Command Line
+Tools. Without it the island still runs; it just hides the pieces that need the
+bridge.
+
 ## What it does
 
 **Compact island** — small widgets sit in two arms that hug the camera housing
