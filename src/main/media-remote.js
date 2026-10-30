@@ -118,6 +118,11 @@ class MediaRemoteBridge extends EventEmitter {
   }
 
   get frameworkPath () {
+    // A released build ships the framework already compiled (see
+    // `tools/build-native.js`); the user's Mac has no clang to offer, so the
+    // prebuilt copy wins whenever it is there.
+    const prebuilt = path.join(process.resourcesPath, 'mediaremote-prebuilt', 'MediaRemoteAdapter.framework');
+    if (fs.existsSync(prebuilt)) return prebuilt;
     return path.join(app.getPath('userData'), 'helper', 'MediaRemoteAdapter.framework');
   }
 
@@ -131,6 +136,12 @@ class MediaRemoteBridge extends EventEmitter {
    * blocking the main process for those froze the whole island at launch.
    */
   build () {
+    // The shipped framework is used as-is; rebuilding it would only make sense
+    // with the sources that are vendored in the bundle and no clang to do it.
+    const shipped = path.join(process.resourcesPath, 'mediaremote-prebuilt', 'MediaRemoteAdapter.framework',
+      'Versions', 'A', 'MediaRemoteAdapter');
+    if (fs.existsSync(shipped)) return Promise.resolve(shipped);
+
     if (!fs.existsSync(CLANG)) throw new Error('clang is not installed (install the Xcode Command Line Tools)');
     if (!fs.existsSync(this.scriptPath)) throw new Error(`adapter script missing at ${this.scriptPath}`);
 
@@ -412,7 +423,8 @@ class MediaRemoteBridge extends EventEmitter {
   }
 
   status () {
-    return { available: this.available, reason: this.reason, compiled: fs.existsSync(this.binaryPath) };
+    const prebuilt = fs.existsSync(this.frameworkPath);
+    return { available: this.available, reason: this.reason, compiled: prebuilt || fs.existsSync(this.binaryPath) };
   }
 
   stop () {
@@ -426,4 +438,4 @@ class MediaRemoteBridge extends EventEmitter {
   }
 }
 
-module.exports = { MediaRemoteBridge };
+module.exports = { MediaRemoteBridge, ADAPTER_SOURCES };

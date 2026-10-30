@@ -52,6 +52,12 @@ module.exports = {
       path.join(__dirname, 'tools', 'helper'),
       path.join(__dirname, 'tools', 'mediaremote'),
     ],
+    // Compiles the helper and the MediaRemote adapter into Resources, so a
+    // released build runs without the Xcode Command Line Tools on the user's
+    // Mac. A build where clang is missing still ships, pieces and all.
+    afterCopy: [
+      require('./tools/build-native').afterCopyHook,
+    ],
     extendInfo: {
       NSAppleEventsUsageDescription:
         'Notch Island needs Apple Events permission to control your music player.',

@@ -17,9 +17,10 @@ all in the notch, with F7–F12 working the way they do on Apple hardware.
    tray menu bar for everything else.
 
 The music widgets, volume, battery and microphone are handled by a small system
-bridge the app compiles itself with the system `clang` — the Xcode Command Line
-Tools. Without it the island still runs; it just hides the pieces that need the
-bridge.
+bridge that ships compiled with the app — nothing to install on your Mac. A
+build made without the toolchain present would fall back to compiling the same
+bridge on first run with the Xcode Command Line Tools, so older builds may ask
+for those once.
 
 ## What it does
 
@@ -194,9 +195,8 @@ layout changes.
 ## The system bridge
 
 Electron cannot reach CoreAudio or MediaPlayer's remote command centre, so the
-app compiles a small Objective-C helper (`tools/helper/NotchHelper.m`) with the
-system `clang` on first launch and talks newline-delimited JSON to it over
-stdio. The helper provides:
+app talks to a small Objective-C helper (`tools/helper/NotchHelper.m`) over
+newline-delimited JSON on stdio. The helper provides:
 
 - the system now-playing session and remote commands (play, pause, next,
   previous, seek)
@@ -205,9 +205,13 @@ stdio. The helper provides:
 - paired Bluetooth devices plus their HID battery levels and connect state
 - the internal battery through IOKit power sources
 
-If the helper cannot be built (no Xcode Command Line Tools), the app still runs:
-the island, hotkeys and clipboard keep working and the settings panel says
-which part is unavailable.
+A released build ships the helper and the MediaRemote adapter already compiled
+(see `tools/build-native.js`): the machine that made the release has clang, so
+the user's Mac needs nothing. When a build was made without the toolchain — or
+while developing — the app compiles the same sources with the system `clang` on
+first run instead. If even that is not possible (no Xcode Command Line Tools),
+the app still runs: the island, hotkeys and clipboard keep working and the
+settings panel says which part is unavailable.
 
 ## Development
 

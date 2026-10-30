@@ -52,6 +52,19 @@ class HelperBridge extends EventEmitter {
   }
 
   /**
+   * What a released build ships: the runner that built it already compiled the
+   * helper, so the user's Mac needs no toolchain at all. When it is there it is
+   * the preferred binary; the compile below remains the fallback (and the only
+   * path in development, where Resources comes from Electron itself).
+   */
+  get prebuilt () {
+    const prebuilt = path.join(process.resourcesPath, 'helper-prebuilt', 'NotchHelper');
+    if (!fs.existsSync(prebuilt)) return null;
+    try { fs.chmodSync(prebuilt, 0o755); } catch {}
+    return prebuilt;
+  }
+
+  /**
    * Compiles the helper when the source is newer than the cached binary.
    *
    * The compile is async on purpose: clang takes a while on a cold cache, and
@@ -59,6 +72,8 @@ class HelperBridge extends EventEmitter {
    * does at the exact moment the user decides whether the app is any good.
    */
   compile () {
+    const prebuilt = this.prebuilt;
+    if (prebuilt) return Promise.resolve(prebuilt);
     const source = this.sourcePath;
     if (!fs.existsSync(source)) throw new Error(`helper source missing at ${source}`);
     if (!fs.existsSync(CLANG)) throw new Error('clang is not installed (install the Xcode Command Line Tools)');
@@ -174,7 +189,7 @@ class HelperBridge extends EventEmitter {
       available: this.available,
       reason: this.reason,
       capabilities: this.capabilities,
-      compiled: fs.existsSync(this.binaryPath),
+      compiled: Boolean(this.prebuilt) || fs.existsSync(this.binaryPath),
     };
   }
 
@@ -187,4 +202,4 @@ stop () {
   }
 }
 
-module.exports = { HelperBridge };
+module.exports = { HelperBridge, FRAMEWORKS };
