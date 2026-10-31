@@ -1,7 +1,7 @@
 {
   "name": "notch-island",
   "productName": "Notch Island",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A macOS Dynamic Island for the notch: media player, volume, brightness, mic, battery, clipboard and more.",
   "main": "src/main/index.js",
   "license": "MIT",
@@ -28,7 +28,12 @@
     "@electron-forge/maker-zip": "^8.0.1",
     "@electron-forge/publisher-github": "^8.0.1",
     "@electron/notarize": "^2.5.0",
-    "electron": "^44.9.1"
+    "electron": "^44.10.1"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.9",
+    "tar": "^7.5.22",
+    "tmp": "^0.2.7"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
