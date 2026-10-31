@@ -18,6 +18,9 @@ const { appUpdateConfig, channelManifest, repository } = require('./update-feed'
  */
 class UpdateFeedPlugin {
   name = 'update-feed';
+  // Forge 8 treats instances carrying this marker as ready-made plugins and
+  // skips its module resolution, which wants devDependencies-style packages.
+  __isElectronForgePlugin = true;
 
   constructor (config = {}) {
     this.config = config;

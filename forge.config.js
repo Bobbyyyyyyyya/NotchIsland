@@ -1,5 +1,7 @@
 const path = require('node:path');
 const { repository } = require('./tools/update-feed');
+const { afterCopyHook } = require('./tools/build-native');
+const UpdateFeedPlugin = require('./tools/forge-plugin-update-feed');
 
 const feed = repository();
 
@@ -55,15 +57,10 @@ module.exports = {
     // Compiles the helper and the MediaRemote adapter into Resources, so a
     // released build runs without the Xcode Command Line Tools on the user's
     // Mac. A build where clang is missing still ships, pieces and all.
-    // Packager calls these hooks through util.promisify, which only resolves
-    // when the callback it appends gets called — `serialHooks` is the wrapper
-    // that does that, so a promise-returning hook function settles instead of
-    // leaving the package phase waiting on a promise nothing will ever
-    // resolve (the process would then simply run dry and exit 0 mid-build).
+    // Packager 20 (what Forge 8 rides on) calls these hooks as async
+    // functions taking a single options object — promise-native at last.
     afterCopy: [
-      require('@electron/packager').serialHooks([
-        require('./tools/build-native').afterCopyHook,
-      ]),
+      async ({ buildPath }) => afterCopyHook(buildPath),
     ],
     extendInfo: {
       NSAppleEventsUsageDescription:
@@ -149,7 +146,7 @@ module.exports = {
   ],
   plugins: [
     // Writes app-update.yml into the build and latest-mac.yml into the release.
-    { name: './tools/forge-plugin-update-feed', config: {} },
+    new UpdateFeedPlugin(),
   ],
 };
 

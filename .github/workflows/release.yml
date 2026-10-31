@@ -31,7 +31,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Forge 8 needs Node >= 22.13 on the runner and in the CLI.
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
